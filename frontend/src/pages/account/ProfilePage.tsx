@@ -1,44 +1,84 @@
+import * as React from "react";
+import { useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/auth/AuthProvider";
-import { Badge, Card, CardContent, CardHeader, CardTitle, PageHeader } from "@/components/ui";
+import { api, errorMessage } from "@/lib/api";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Field, Input, PageHeader } from "@/components/ui";
+import { useToast } from "@/components/Toast";
 
 export function ProfilePage() {
-  const { me } = useAuth();
+  const { me, refresh } = useAuth();
+  const { toast } = useToast();
+  const [email, setEmail] = React.useState("");
+  const [displayName, setDisplayName] = React.useState("");
+  const [initialized, setInitialized] = React.useState(false);
+
+  React.useEffect(() => {
+    if (me && !initialized) {
+      setEmail(me.user.email);
+      setDisplayName(me.user.display_name);
+      setInitialized(true);
+    }
+  }, [me, initialized]);
+
+  const save = useMutation({
+    mutationFn: () => api.patch("/api/v1/account/profile", { email, display_name: displayName }),
+    onSuccess: () => {
+      toast("资料已更新", "success");
+      refresh();
+    },
+    onError: (e) => toast(errorMessage(e), "error"),
+  });
+
   if (!me) return null;
+
   return (
     <div>
-      <PageHeader title="个人资料" description="你的账户信息与系统权限。" />
-      <div className="grid gap-6 md:grid-cols-2">
+      <PageHeader title="个人资料" description="查看与编辑你的账户信息。登录名不可修改，邮箱与显示名可自行编辑。" />
+      <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>账户</CardTitle>
+            <CardTitle>编辑资料</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <Row label="用户名" value={me.user.username} />
-            <Row label="显示名" value={me.user.display_name || "—"} />
-            <Row label="邮箱" value={me.user.email || "—"} />
-            <Row label="状态" value={me.user.status} />
-            <Row
-              label="MFA"
-              value={`通行密钥 ${me.mfa.passkeys} · TOTP ${me.mfa.totp ? "已绑定" : "未绑定"} · 恢复码 ${me.mfa.recovery_codes}`}
-            />
+          <CardContent className="space-y-4">
+            <Field label="登录名" help="登录名由管理员创建后不可更改。">
+              <Input value={me.user.username} disabled />
+            </Field>
+            <Field label="显示名">
+              <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="你的显示名" />
+            </Field>
+            <Field label="邮箱" help="邮箱仅作展示用途，无需验证，可自行填写。">
+              <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+            </Field>
+            <Button onClick={() => save.mutate()} loading={save.isPending}>
+              保存修改
+            </Button>
           </CardContent>
         </Card>
+
         <Card>
           <CardHeader>
-            <CardTitle>系统权限</CardTitle>
+            <CardTitle>账户与安全状态</CardTitle>
           </CardHeader>
-          <CardContent>
-            {me.permissions.length === 0 ? (
-              <p className="text-sm text-muted-foreground">你没有任何系统管理权限。</p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {me.permissions.map((p) => (
-                  <Badge key={p} variant="muted">
-                    {p}
-                  </Badge>
-                ))}
-              </div>
-            )}
+          <CardContent className="space-y-3 text-sm">
+            <Row label="状态" value={me.user.status === "active" ? "已启用" : "已禁用"} />
+            <Row
+              label="多因素"
+              value={`通行密钥 ${me.mfa.passkeys} 个 · TOTP ${me.mfa.totp ? "已绑定" : "未绑定"} · 恢复码剩 ${me.mfa.recovery_codes} 个`}
+            />
+            <div className="pt-2">
+              <div className="mb-2 text-muted-foreground">系统管理权限</div>
+              {me.permissions.length === 0 ? (
+                <p className="text-muted-foreground">你没有任何系统管理权限。</p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {me.permissions.map((p) => (
+                    <Badge key={p} variant="muted">
+                      {p}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -48,9 +88,9 @@ export function ProfilePage() {
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between border-b pb-2 last:border-0">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium">{value}</span>
+    <div className="flex justify-between gap-4 border-b pb-2 last:border-0">
+      <span className="shrink-0 text-muted-foreground">{label}</span>
+      <span className="text-right font-medium">{value}</span>
     </div>
   );
 }

@@ -23,6 +23,7 @@ func (h *Handlers) MountAccount(r chi.Router) {
 	r.Group(func(r chi.Router) {
 		r.Use(h.RequireAuth)
 		r.Use(h.Gate)
+		r.Method("PATCH", "/api/v1/account/profile", httpx.Handler(h.handleUpdateProfile))
 		r.Method("GET", "/api/v1/account/sessions", httpx.Handler(h.handleMySessions))
 		r.Method("DELETE", "/api/v1/account/sessions/{id}", httpx.Handler(h.handleRevokeMySession))
 		r.Method("POST", "/api/v1/account/sessions/revoke-others", httpx.Handler(h.handleRevokeOtherSessions))
@@ -82,6 +83,36 @@ func (h *Handlers) handleMe(w http.ResponseWriter, r *http.Request) error {
 		resp.Impersonator = &meActor{ID: p.ImpersonatorID, Username: p.ImpersonatorLabel}
 	}
 	httpx.JSON(w, r, http.StatusOK, resp)
+	return nil
+}
+
+type updateProfileReq struct {
+	Email       string `json:"email"`
+	DisplayName string `json:"display_name"`
+}
+
+// handleUpdateProfile lets a user edit their own email and display name. The
+// email is free-form (no SMTP verification); the username is immutable.
+func (h *Handlers) handleUpdateProfile(w http.ResponseWriter, r *http.Request) error {
+	var req updateProfileReq
+	if err := httpx.DecodeJSON(r, &req); err != nil {
+		return err
+	}
+	if len([]rune(req.DisplayName)) > 64 || len(req.Email) > 254 {
+		return httpx.ErrBadRequest.WithDetail("显示名或邮箱过长")
+	}
+	p, _ := authctx.From(r.Context())
+	ctx := r.Context()
+	err := h.Store.WithTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if err := h.Repo.UpdateSelfProfile(ctx, tx, p.UserID, req.Email, req.DisplayName); err != nil {
+			return err
+		}
+		return h.Audit.Write(ctx, tx, audit.Event{Action: "account.profile.update", TargetType: "user", TargetID: p.UserID.String(), TargetLabel: p.Username})
+	})
+	if err != nil {
+		return err
+	}
+	httpx.JSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
 	return nil
 }
 
