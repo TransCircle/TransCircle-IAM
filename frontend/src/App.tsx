@@ -18,6 +18,7 @@ import { AuditPage } from "./pages/admin/AuditPage";
 import { SettingsPage } from "./pages/admin/SettingsPage";
 import { ApiTokensPage } from "./pages/admin/ApiTokensPage";
 import { SecurityKeysPage } from "./pages/admin/SecurityKeysPage";
+import { ApiDocsPage } from "./pages/ApiDocsPage";
 
 function adminRoute(perm: string, el: React.ReactNode) {
   return <RequirePermission perm={perm}>{el}</RequirePermission>;
@@ -59,6 +60,7 @@ export default function App() {
         <Route path="/account" element={<ProfilePage />} />
         <Route path="/account/security" element={<SecurityPage />} />
         <Route path="/account/sessions" element={<MySessionsPage />} />
+        <Route path="/api-docs" element={<ApiDocsPage />} />
 
         <Route path="/admin/dashboard" element={adminRoute("iam.users.read", <DashboardPage />)} />
         <Route path="/admin/users" element={adminRoute("iam.users.read", <UsersPage />)} />
