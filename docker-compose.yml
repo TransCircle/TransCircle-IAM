@@ -1,0 +1,67 @@
+name: transcircle-iam
+
+# 单一应用容器：前端 SPA 已内嵌进后端二进制，同一个端口(8080)同时提供 UI 与
+# API。容器启动时自动完成迁移与初始化。你们的 nginx 只需把该端口反代出去即可。
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-iam}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-iam}
+      POSTGRES_DB: ${POSTGRES_DB:-iam}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-iam} -d ${POSTGRES_DB:-iam}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-iamredis}"]
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-iamredis}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      args:
+        VERSION: ${VERSION:-dev}
+    command: ["serve"]
+    environment:
+      IAM_ENV: ${IAM_ENV:-dev}
+      IAM_DATABASE_URL: postgres://${POSTGRES_USER:-iam}:${POSTGRES_PASSWORD:-iam}@postgres:5432/${POSTGRES_DB:-iam}?sslmode=disable
+      IAM_REDIS_URL: redis://:${REDIS_PASSWORD:-iamredis}@redis:6379/0
+      IAM_ISSUER: ${IAM_ISSUER:-http://localhost}
+      IAM_COOKIE_SECURE: ${IAM_COOKIE_SECURE:-}
+      # 信任所有来源的 X-Forwarded-*（应用仅经你们的 nginx 暴露）。
+      IAM_TRUST_ALL_PROXIES: "true"
+      IAM_CORS_ORIGINS: ${IAM_ISSUER:-http://localhost}
+      IAM_BOOTSTRAP_OUT_FILE: /var/lib/iam/bootstrap.json
+      IAM_KEK_ENABLED: ${IAM_KEK_ENABLED:-}
+      IAM_KEK_FILE: ${IAM_KEK_FILE:-}
+    ports:
+      # 唯一对外出口：你们的 nginx 反代到这里。
+      - "${APP_PORT:-8080}:8080"
+    volumes:
+      - ./data/app:/var/lib/iam
+    healthcheck:
+      test: ["CMD", "/iam", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
