@@ -1,0 +1,25 @@
+import { startRegistration, startAuthentication } from "@simplewebauthn/browser";
+import { api } from "./api";
+
+// registerPasskey runs the WebAuthn registration ceremony for the current user.
+export async function registerPasskey(name: string): Promise<void> {
+  const begin = await api.post("/api/v1/auth/webauthn/register/begin");
+  const { options, wa_ticket } = begin.data as { options: unknown; wa_ticket: string };
+  const attestation = await startRegistration({ optionsJSON: options as any });
+  await api.post(
+    `/api/v1/auth/webauthn/register/finish?wt=${encodeURIComponent(wa_ticket)}&name=${encodeURIComponent(name)}`,
+    attestation
+  );
+}
+
+// loginPasskey runs the assertion ceremony during login for the given ticket.
+export async function loginPasskey(ticket: string): Promise<{ required_action: string }> {
+  const begin = await api.post("/api/v1/auth/webauthn/login/begin", { ticket });
+  const { options, wa_ticket } = begin.data as { options: unknown; wa_ticket: string };
+  const assertion = await startAuthentication({ optionsJSON: options as any });
+  const finish = await api.post(
+    `/api/v1/auth/webauthn/login/finish?lt=${encodeURIComponent(ticket)}&wt=${encodeURIComponent(wa_ticket)}`,
+    assertion
+  );
+  return finish.data as { required_action: string };
+}
