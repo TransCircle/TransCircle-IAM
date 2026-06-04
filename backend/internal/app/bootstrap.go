@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -72,12 +73,27 @@ func ensureInitialized(ctx context.Context, rt *runtime) (*bootstrapOutput, erro
 			return err
 		}
 
+		// Self-heal the built-in roles every boot: re-grant all system permissions
+		// to super_admin and admin (repairs an accidental permission wipe).
+		if err := repo.EnsureRoleHasAllSystemPerms(ctx, tx, rbac.SuperAdminRole); err != nil {
+			return err
+		}
+		if err := repo.EnsureRoleHasAllSystemPerms(ctx, tx, rbac.AdminRole); err != nil {
+			return err
+		}
+
 		n, err := repo.CountUsers(ctx, tx)
 		if err != nil {
 			return err
 		}
 		if n > 0 {
-			return nil // admin already exists
+			// System already has users: if nobody holds super_admin anymore
+			// (the operator locked themselves out), re-grant it to the bootstrap
+			// admin so the system can always be recovered by a restart.
+			if err := healSuperAdmin(ctx, tx, repo, rt.cfg.BootstrapAdminUsername); err != nil {
+				return err
+			}
+			return nil
 		}
 
 		admin := &rbac.User{
@@ -138,6 +154,33 @@ func Bootstrap(ctx context.Context) error {
 	return writeBootstrapOutput(rt.cfg.BootstrapOutFile, out)
 }
 
+// healSuperAdmin re-grants the super_admin role to the bootstrap admin when no
+// active user holds it, so a lockout self-recovers on the next start.
+func healSuperAdmin(ctx context.Context, tx pgx.Tx, repo rbac.Repo, adminUsername string) error {
+	n, err := repo.CountActiveUsersWithRole(ctx, tx, rbac.SuperAdminRole)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		return nil
+	}
+	admin, err := repo.GetUserByUsername(ctx, tx, adminUsername)
+	if errors.Is(err, rbac.ErrNotFound) {
+		return nil // no bootstrap admin to recover to
+	}
+	if err != nil {
+		return err
+	}
+	if err := repo.AddUserRole(ctx, tx, admin.ID, rbac.SuperAdminRole, admin.ID); err != nil {
+		return err
+	}
+	if err := repo.BumpPermVersion(ctx, tx, admin.ID); err != nil {
+		return err
+	}
+	fmt.Printf("bootstrap: 检测到无超级管理员，已将 super_admin 重新授予 %s。\n", admin.Username)
+	return nil
+}
+
 func ensureWebAuthnRP(ctx context.Context, tx pgx.Tx, issuer string) error {
 	u, err := url.Parse(issuer)
 	if err != nil {
@@ -181,9 +224,43 @@ func Admin(ctx context.Context, args []string) error {
 			return fmt.Errorf("usage: iam admin reset-mfa <username>")
 		}
 		return adminResetMFA(ctx, args[1])
+	case "grant-super-admin":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: iam admin grant-super-admin <username>")
+		}
+		return adminGrantSuperAdmin(ctx, args[1])
 	default:
 		return fmt.Errorf("unknown admin command %q", args[0])
 	}
+}
+
+// adminGrantSuperAdmin re-grants the super_admin role to a user and re-syncs the
+// role's permissions — the break-glass recovery for a self-inflicted lockout.
+func adminGrantSuperAdmin(ctx context.Context, username string) error {
+	rt, err := setup(ctx)
+	if err != nil {
+		return err
+	}
+	defer rt.st.Close()
+	repo := rbac.Repo{}
+
+	return rt.st.WithTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		u, err := repo.GetUserByUsername(ctx, tx, username)
+		if err != nil {
+			return err
+		}
+		if err := repo.EnsureRoleHasAllSystemPerms(ctx, tx, rbac.SuperAdminRole); err != nil {
+			return err
+		}
+		if err := repo.AddUserRole(ctx, tx, u.ID, rbac.SuperAdminRole, u.ID); err != nil {
+			return err
+		}
+		if err := repo.BumpPermVersion(ctx, tx, u.ID); err != nil {
+			return err
+		}
+		fmt.Printf("admin: 已将 super_admin 授予用户 %s 并重置该角色权限。\n", username)
+		return nil
+	})
 }
 
 func adminResetMFA(ctx context.Context, username string) error {

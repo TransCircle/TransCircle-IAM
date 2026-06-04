@@ -52,6 +52,9 @@ func (h *Handlers) revokeAllUserSessions(w http.ResponseWriter, r *http.Request)
 		return err
 	}
 	ctx := r.Context()
+	if err := h.assertCanManageUser(ctx, actorID(r), id); err != nil {
+		return err
+	}
 	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if err := h.Sessions.RevokeAllForUser(ctx, tx, id, nil); err != nil {
 			return err

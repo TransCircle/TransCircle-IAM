@@ -8,7 +8,6 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/transcircle/iam/internal/audit"
-	"github.com/transcircle/iam/internal/authctx"
 	"github.com/transcircle/iam/internal/authn"
 	"github.com/transcircle/iam/internal/crypto"
 	"github.com/transcircle/iam/internal/httpx"
@@ -101,6 +100,9 @@ func (h *Handlers) updateUser(w http.ResponseWriter, r *http.Request) error {
 		return httpx.ErrBadRequest.WithDetail("状态非法")
 	}
 	ctx := r.Context()
+	if err := h.assertCanManageUser(ctx, actorID(r), id); err != nil {
+		return err
+	}
 	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if err := h.Repo.UpdateUserProfile(ctx, tx, id, req.Email, req.DisplayName, req.Status); err != nil {
 			return err
@@ -126,6 +128,9 @@ func (h *Handlers) deleteUser(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	ctx := r.Context()
+	if err := h.assertCanManageUser(ctx, actorID(r), id); err != nil {
+		return err
+	}
 	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if err := h.Sessions.RevokeAllForUser(ctx, tx, id, nil); err != nil {
 			return err
@@ -148,6 +153,9 @@ func (h *Handlers) resetPassword(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	ctx := r.Context()
+	if err := h.assertCanManageUser(ctx, actorID(r), id); err != nil {
+		return err
+	}
 	passwords := authn.NewPasswordService(h.Hasher, 12, 5)
 	temp := crypto.RandomToken(9)
 	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
@@ -259,11 +267,16 @@ func (h *Handlers) mutateAssignment(w http.ResponseWriter, r *http.Request, kind
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		return err
 	}
-	by := uuid.Nil
-	if p, ok := authctx.From(r.Context()); ok {
-		by = p.UserID
-	}
+	by := actorID(r)
 	ctx := r.Context()
+	if err := h.assertCanManageUser(ctx, by, userID); err != nil {
+		return err
+	}
+	if kind == "roles" {
+		if err := h.assertCanGrantRole(ctx, by, req.ID); err != nil {
+			return err
+		}
+	}
 	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if err := fn(ctx, tx, userID, req.ID, by); err != nil {
 			return err
@@ -288,6 +301,18 @@ func (h *Handlers) mutateAssignmentPath(w http.ResponseWriter, r *http.Request, 
 		return err
 	}
 	ctx := r.Context()
+	actor := actorID(r)
+	if err := h.assertCanManageUser(ctx, actor, userID); err != nil {
+		return err
+	}
+	if param == "roleID" {
+		if err := h.assertCanGrantRole(ctx, actor, target); err != nil {
+			return err
+		}
+		if err := h.assertNotLastSuperAdmin(ctx, target); err != nil {
+			return err
+		}
+	}
 	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if err := fn(ctx, tx, userID, target); err != nil {
 			return err
@@ -315,6 +340,9 @@ func (h *Handlers) startImpersonation(w http.ResponseWriter, r *http.Request) er
 	target, err := h.Repo.GetUser(r.Context(), h.Store.Pool, id)
 	if err != nil {
 		return httpx.ErrNotFound
+	}
+	if err := h.assertCanManageUser(r.Context(), actorID(r), id); err != nil {
+		return err
 	}
 	return h.Auth.Impersonate(w, r, target)
 }

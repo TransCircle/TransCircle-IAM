@@ -132,6 +132,9 @@ func (h *Handlers) createPermission(w http.ResponseWriter, r *http.Request) erro
 	if err != nil {
 		return err
 	}
+	if err := assertNotSystemApp(appID); err != nil {
+		return err
+	}
 	var req permReq
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		return err
@@ -164,6 +167,9 @@ func (h *Handlers) updatePermission(w http.ResponseWriter, r *http.Request) erro
 		return err
 	}
 	ctx := r.Context()
+	if err := h.assertPermissionEditable(ctx, id); err != nil {
+		return err
+	}
 	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if err := h.Repo.UpdatePermission(ctx, tx, id, req.DisplayName, req.Description, req.Notes, req.Category); err != nil {
 			return err
@@ -183,6 +189,9 @@ func (h *Handlers) deletePermission(w http.ResponseWriter, r *http.Request) erro
 		return err
 	}
 	ctx := r.Context()
+	if err := h.assertPermissionEditable(ctx, id); err != nil {
+		return err
+	}
 	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if err := h.Repo.DeletePermission(ctx, tx, id); err != nil {
 			return err
@@ -227,6 +236,9 @@ func (h *Handlers) createRole(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	if err := assertNotSystemApp(appID); err != nil {
+		return err
+	}
 	var req roleReq
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		return err
@@ -259,6 +271,9 @@ func (h *Handlers) updateRole(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	ctx := r.Context()
+	if err := h.assertRoleEditable(ctx, id); err != nil {
+		return err
+	}
 	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if err := h.Repo.UpdateRole(ctx, tx, id, req.DisplayName, req.Description, req.Notes); err != nil {
 			return err
@@ -278,6 +293,9 @@ func (h *Handlers) deleteRole(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	ctx := r.Context()
+	if err := h.assertRoleEditable(ctx, id); err != nil {
+		return err
+	}
 	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if err := h.Repo.BumpPermVersionForRole(ctx, tx, id); err != nil {
 			return err
@@ -321,6 +339,9 @@ func (h *Handlers) setRolePermissions(w http.ResponseWriter, r *http.Request) er
 		return err
 	}
 	ctx := r.Context()
+	if err := h.assertRoleEditable(ctx, id); err != nil {
+		return err
+	}
 	// Replacing a role's permissions is a delete-then-insert that must not
 	// interleave with a concurrent edit; run it at SERIALIZABLE with retry.
 	err = h.Store.WithSerializableTx(ctx, func(ctx context.Context, tx pgx.Tx) error {

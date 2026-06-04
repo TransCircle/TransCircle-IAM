@@ -122,6 +122,32 @@ func (Repo) BumpPermVersion(ctx context.Context, db store.DBTX, userID uuid.UUID
 	return err
 }
 
+// EnsureRoleHasAllSystemPerms (re)grants every system-app permission to a role.
+// Used to self-heal the built-in super_admin / admin roles on startup.
+func (Repo) EnsureRoleHasAllSystemPerms(ctx context.Context, db store.DBTX, roleID uuid.UUID) error {
+	_, err := db.Exec(ctx,
+		`INSERT INTO role_permissions (role_id, permission_id)
+		 SELECT $1, p.id FROM permissions p WHERE p.application_id=$2
+		 ON CONFLICT DO NOTHING`, roleID, SystemAppID)
+	return err
+}
+
+// CountActiveUsersWithRole counts active (non-deleted) users that hold a role,
+// directly or via a group.
+func (Repo) CountActiveUsersWithRole(ctx context.Context, db store.DBTX, roleID uuid.UUID) (int, error) {
+	const q = `
+SELECT count(*) FROM (
+    SELECT ur.user_id AS uid FROM user_roles ur WHERE ur.role_id=$1
+    UNION
+    SELECT gm.user_id FROM group_members gm JOIN group_roles gr ON gr.group_id=gm.group_id WHERE gr.role_id=$1
+) t
+JOIN users u ON u.id = t.uid
+WHERE u.is_active AND u.deleted_at IS NULL`
+	var n int
+	err := db.QueryRow(ctx, q, roleID).Scan(&n)
+	return n, err
+}
+
 // BumpEpoch increments the global authz epoch, invalidating every user's cached
 // effective permissions at once. Use for broad changes whose affected-user set is
 // expensive to enumerate (permission deletion, application disable/delete).
@@ -232,6 +258,21 @@ func (Repo) UpdateUserProfile(ctx context.Context, db store.DBTX, id uuid.UUID, 
 	ct, err := db.Exec(ctx,
 		`UPDATE users SET email=$2, display_name=$3, status=$4, is_active=($4='active') WHERE id=$1 AND deleted_at IS NULL`,
 		id, email, displayName, status)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// UpdateSelfProfile lets a user edit their own editable profile fields
+// (email + display name); the username is immutable.
+func (Repo) UpdateSelfProfile(ctx context.Context, db store.DBTX, id uuid.UUID, email, displayName string) error {
+	ct, err := db.Exec(ctx,
+		`UPDATE users SET email=$2, display_name=$3 WHERE id=$1 AND deleted_at IS NULL`,
+		id, email, displayName)
 	if err != nil {
 		return err
 	}

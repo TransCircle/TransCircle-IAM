@@ -13,8 +13,10 @@ import (
 var (
 	SystemAppID    = uuid.MustParse("00000000-0000-0000-0000-000000000001")
 	SuperAdminRole = uuid.MustParse("00000000-0000-0000-0000-000000000002")
+	AdminRole      = uuid.MustParse("00000000-0000-0000-0000-000000000003")
 	SystemAppKey   = "system"
 	SuperAdminKey  = "super_admin"
+	AdminKey       = "admin"
 )
 
 // User is an account.
