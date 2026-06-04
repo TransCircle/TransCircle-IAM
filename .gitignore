@@ -1,0 +1,20 @@
+# Env / secrets
+.env
+
+# Persisted data (bind-mounted under ./data)
+/data/
+
+# Go
+/backend/bin/
+*.test
+/.gocache/
+/.gomodcache/
+
+# Node
+node_modules/
+/frontend/dist/
+
+# Editor / OS
+.idea/
+.DS_Store
+*.log
