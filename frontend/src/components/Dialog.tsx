@@ -19,23 +19,59 @@ export function Dialog({
   footer?: React.ReactNode;
   className?: string;
 }) {
+  const [render, setRender] = React.useState(open);
+  const [show, setShow] = React.useState(false);
+
   React.useEffect(() => {
+    if (open) {
+      setRender(true);
+      const id = requestAnimationFrame(() => setShow(true));
+      return () => cancelAnimationFrame(id);
+    }
+    setShow(false);
+    const t = setTimeout(() => setRender(false), 180);
+    return () => clearTimeout(t);
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
     }
-    if (open) window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
   }, [open, onClose]);
 
-  if (!open) return null;
+  if (!render) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className={cn("relative z-10 w-full max-w-lg rounded-lg border bg-card p-6 shadow-lg", className)}>
-        <button onClick={onClose} className="absolute right-4 top-4 text-muted-foreground hover:text-foreground">
+      <div
+        className={cn(
+          "absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity duration-200",
+          show ? "opacity-100" : "opacity-0"
+        )}
+        onClick={onClose}
+      />
+      <div
+        className={cn(
+          "relative z-10 w-full max-w-lg rounded-xl border bg-card p-6 shadow-2xl transition-all duration-200",
+          show ? "translate-y-0 scale-100 opacity-100" : "translate-y-3 scale-[0.97] opacity-0",
+          className
+        )}
+      >
+        <button
+          onClick={onClose}
+          className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          aria-label="关闭"
+        >
           <X className="h-4 w-4" />
         </button>
-        <h2 className="text-lg font-semibold">{title}</h2>
+        <h2 className="pr-6 text-lg font-semibold tracking-tight">{title}</h2>
         {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
         <div className="mt-4">{children}</div>
         {footer && <div className="mt-6 flex justify-end gap-2">{footer}</div>}

@@ -1,17 +1,20 @@
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
+import { Check, ChevronDown, HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+/* ----------------------------- Button ----------------------------- */
+
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex items-center justify-center gap-2 rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98]",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        outline: "border border-input bg-background hover:bg-accent",
-        ghost: "hover:bg-accent",
-        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        default: "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm",
+        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/70",
+        outline: "border border-input bg-card hover:bg-accent hover:text-accent-foreground",
+        ghost: "hover:bg-accent hover:text-accent-foreground",
+        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
@@ -46,12 +49,14 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 );
 Button.displayName = "Button";
 
+/* ----------------------------- Inputs ----------------------------- */
+
 export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
   ({ className, ...props }, ref) => (
     <input
       ref={ref}
       className={cn(
-        "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+        "flex h-10 w-full rounded-lg border border-input bg-card px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
         className
       )}
       {...props}
@@ -65,7 +70,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTML
     <textarea
       ref={ref}
       className={cn(
-        "flex min-h-[72px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "flex min-h-[80px] w-full rounded-lg border border-input bg-card px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         className
       )}
       {...props}
@@ -74,28 +79,47 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTML
 );
 Textarea.displayName = "Textarea";
 
-export function Label({ className, ...props }: React.LabelHTMLAttributes<HTMLLabelElement>) {
-  return <label className={cn("text-sm font-medium leading-none", className)} {...props} />;
+export function Label({ className, children, ...props }: React.LabelHTMLAttributes<HTMLLabelElement>) {
+  return (
+    <label className={cn("text-sm font-medium leading-none text-foreground", className)} {...props}>
+      {children}
+    </label>
+  );
 }
 
-export function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
+export function Field({
+  label,
+  children,
+  hint,
+  help,
+}: {
+  label: string;
+  children: React.ReactNode;
+  hint?: string;
+  help?: string;
+}) {
   return (
     <div className="space-y-1.5">
-      <Label>{label}</Label>
+      <div className="flex items-center gap-1.5">
+        <Label>{label}</Label>
+        {help && <Help text={help} />}
+      </div>
       {children}
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
 }
 
+/* ----------------------------- Card ----------------------------- */
+
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("rounded-lg border bg-card text-card-foreground shadow-sm", className)} {...props} />;
+  return <div className={cn("rounded-xl border bg-card text-card-foreground shadow-sm", className)} {...props} />;
 }
 export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return <div className={cn("flex flex-col space-y-1.5 p-6", className)} {...props} />;
 }
 export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-  return <h3 className={cn("text-lg font-semibold leading-none tracking-tight", className)} {...props} />;
+  return <h3 className={cn("text-base font-semibold leading-none tracking-tight", className)} {...props} />;
 }
 export function CardDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
   return <p className={cn("text-sm text-muted-foreground", className)} {...props} />;
@@ -104,14 +128,26 @@ export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDi
   return <div className={cn("p-6 pt-0", className)} {...props} />;
 }
 
-export function Badge({ className, variant = "default", ...props }: React.HTMLAttributes<HTMLSpanElement> & { variant?: "default" | "success" | "muted" | "destructive" }) {
+/* ----------------------------- Badge ----------------------------- */
+
+export function Badge({
+  className,
+  variant = "default",
+  ...props
+}: React.HTMLAttributes<HTMLSpanElement> & { variant?: "default" | "success" | "muted" | "destructive" | "warning" }) {
   const variants: Record<string, string> = {
     default: "bg-primary/10 text-primary",
-    success: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+    success: "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400",
+    warning: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
     muted: "bg-muted text-muted-foreground",
-    destructive: "bg-destructive/15 text-destructive",
+    destructive: "bg-destructive/12 text-destructive",
   };
-  return <span className={cn("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium", variants[variant], className)} {...props} />;
+  return (
+    <span
+      className={cn("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium", variants[variant], className)}
+      {...props}
+    />
+  );
 }
 
 export function Spinner({ className }: { className?: string }) {
@@ -123,38 +159,202 @@ export function Spinner({ className }: { className?: string }) {
   );
 }
 
-export const Select = React.forwardRef<HTMLSelectElement, React.SelectHTMLAttributes<HTMLSelectElement>>(
-  ({ className, children, ...props }, ref) => (
-    <select
-      ref={ref}
-      className={cn(
-        "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        className
-      )}
-      {...props}
-    >
-      {children}
-    </select>
-  )
-);
-Select.displayName = "Select";
+/* ----------------------------- Select (custom) ----------------------------- */
 
-export function Checkbox({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input type="checkbox" className={cn("h-4 w-4 rounded border-input accent-primary", className)} {...props} />;
+export interface SelectOption {
+  value: string;
+  label: string;
 }
 
-export function PageHeader({ title, description, action }: { title: string; description?: string; action?: React.ReactNode }) {
+export function Select({
+  value,
+  onValueChange,
+  options,
+  placeholder = "请选择",
+  disabled,
+  className,
+}: {
+  value: string;
+  onValueChange: (value: string) => void;
+  options: SelectOption[];
+  placeholder?: string;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+  const selected = options.find((o) => o.value === value);
+
+  React.useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
   return (
-    <div className="mb-6 flex items-start justify-between gap-4">
+    <div ref={ref} className={cn("relative", className)}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-10 w-full items-center justify-between rounded-lg border border-input bg-card px-3 text-sm shadow-sm transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+      >
+        <span className={cn("truncate", !selected && "text-muted-foreground")}>
+          {selected ? selected.label : placeholder}
+        </span>
+        <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div className="absolute z-50 mt-1.5 max-h-64 w-full animate-pop-in overflow-auto rounded-lg border bg-card p-1 shadow-lg">
+          {options.length === 0 && <div className="px-3 py-2 text-sm text-muted-foreground">无选项</div>}
+          {options.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              onClick={() => {
+                onValueChange(o.value);
+                setOpen(false);
+              }}
+              className={cn(
+                "flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent",
+                o.value === value && "bg-accent/60 font-medium text-accent-foreground"
+              )}
+            >
+              <span className="truncate">{o.label}</span>
+              {o.value === value && <Check className="h-4 w-4 text-primary" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ----------------------------- Checkbox (custom) ----------------------------- */
+
+export function Checkbox({
+  checked,
+  onCheckedChange,
+  disabled,
+  className,
+}: {
+  checked: boolean;
+  onCheckedChange?: (checked: boolean) => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onCheckedChange?.(!checked)}
+      className={cn(
+        "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+        checked ? "border-primary bg-primary text-primary-foreground" : "border-input bg-card hover:border-primary/60",
+        className
+      )}
+    >
+      {checked && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+    </button>
+  );
+}
+
+/* ----------------------------- Switch (custom) ----------------------------- */
+
+export function Switch({
+  checked,
+  onCheckedChange,
+  disabled,
+}: {
+  checked: boolean;
+  onCheckedChange?: (checked: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onCheckedChange?.(!checked)}
+      className={cn(
+        "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+        checked ? "bg-primary" : "bg-input"
+      )}
+    >
+      <span
+        className={cn(
+          "inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform",
+          checked ? "translate-x-5" : "translate-x-0.5"
+        )}
+      />
+    </button>
+  );
+}
+
+/* ----------------------------- Help tooltip ----------------------------- */
+
+export function Help({ text, className }: { text: string; className?: string }) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <span
+      className={cn("relative inline-flex", className)}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="text-muted-foreground/70 transition-colors hover:text-primary"
+        aria-label="帮助"
+      >
+        <HelpCircle className="h-3.5 w-3.5" />
+      </button>
+      {open && (
+        <span className="absolute bottom-full left-1/2 z-50 mb-1.5 w-56 -translate-x-1/2 animate-fade-in rounded-lg border bg-card px-3 py-2 text-xs font-normal leading-relaxed text-muted-foreground shadow-lg">
+          {text}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/* ----------------------------- Layout helpers ----------------------------- */
+
+export function PageHeader({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
         {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
       </div>
-      {action}
+      {action && <div className="shrink-0">{action}</div>}
     </div>
   );
 }
 
 export function EmptyState({ message }: { message: string }) {
-  return <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">{message}</div>;
+  return (
+    <div className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">{message}</div>
+  );
 }
