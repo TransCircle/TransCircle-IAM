@@ -88,7 +88,9 @@ function PermissionsTab({ appId }: { appId: string }) {
       <Dialog open={open} onClose={() => setOpen(false)} title="新建权限"
         footer={<><Button variant="outline" onClick={() => setOpen(false)}>取消</Button><Button onClick={() => create.mutate()} loading={create.isPending}>创建</Button></>}>
         <div className="space-y-4">
-          <Field label="Key" hint="如 doc.read"><Input value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} /></Field>
+          <Field label="标识 (key)" hint="如 doc.read" help="应用内唯一的权限标识，应用会用它来判断用户能否执行某操作。">
+            <Input value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} />
+          </Field>
           <Field label="名称"><Input value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} /></Field>
           <Field label="分类"><Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} /></Field>
           <Field label="描述"><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
@@ -157,7 +159,9 @@ function RolesTab({ appId }: { appId: string }) {
       <Dialog open={open} onClose={() => setOpen(false)} title="新建角色"
         footer={<><Button variant="outline" onClick={() => setOpen(false)}>取消</Button><Button onClick={() => create.mutate()} loading={create.isPending}>创建</Button></>}>
         <div className="space-y-4">
-          <Field label="Key"><Input value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} /></Field>
+          <Field label="标识 (key)" hint="如 editor" help="角色是一组权限的集合；标识用于在该应用内唯一标记此角色。">
+            <Input value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} />
+          </Field>
           <Field label="名称"><Input value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} /></Field>
           <Field label="描述"><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
         </div>
@@ -201,9 +205,9 @@ function RolePermsDialog({ role, appId, onClose, canWrite }: { role: Role; appId
             <Checkbox
               checked={selected.has(p.id)}
               disabled={!canWrite}
-              onChange={(e) => {
+              onCheckedChange={(checked) => {
                 const next = new Set(selected);
-                if (e.target.checked) next.add(p.id);
+                if (checked) next.add(p.id);
                 else next.delete(p.id);
                 setSelected(next);
               }}

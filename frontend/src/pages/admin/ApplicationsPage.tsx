@@ -58,7 +58,7 @@ export function ApplicationsPage() {
               </Link>
             ),
           },
-          { header: "Key", cell: (a) => <Badge variant="muted">{a.key}</Badge> },
+          { header: "标识", cell: (a) => <Badge variant="muted">{a.key}</Badge> },
           { header: "类型", cell: (a) => (a.is_system ? <Badge>系统内置</Badge> : "应用") },
           { header: "状态", cell: (a) => (a.is_active ? <Badge variant="success">启用</Badge> : <Badge variant="muted">停用</Badge>) },
           {
@@ -75,7 +75,9 @@ export function ApplicationsPage() {
       <Dialog open={open} onClose={() => setOpen(false)} title="新建应用"
         footer={<><Button variant="outline" onClick={() => setOpen(false)}>取消</Button><Button onClick={() => create.mutate()} loading={create.isPending}>创建</Button></>}>
         <div className="space-y-4">
-          <Field label="Key" hint="唯一标识，如 wiki、grafana"><Input value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} /></Field>
+          <Field label="标识 (key)" hint="唯一英文标识，如 wiki、grafana" help="创建后作为 OIDC 客户端绑定与权限查询 API 的应用标识，建议用小写字母/数字。">
+            <Input value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} />
+          </Field>
           <Field label="名称"><Input value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} /></Field>
           <Field label="描述"><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
         </div>

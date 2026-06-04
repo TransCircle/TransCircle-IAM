@@ -21,12 +21,17 @@ export function AuditPage() {
       <PageHeader title="审计日志" description="所有管理与安全操作的不可篡改记录。" />
       <div className="mb-4 flex flex-wrap gap-3">
         <Input className="max-w-xs" placeholder="按操作过滤，如 iam.user" value={action} onChange={(e) => setAction(e.target.value)} />
-        <Select className="max-w-[160px]" value={result} onChange={(e) => setResult(e.target.value)}>
-          <option value="">全部结果</option>
-          <option value="success">成功</option>
-          <option value="failure">失败</option>
-          <option value="denied">拒绝</option>
-        </Select>
+        <Select
+          className="w-40"
+          value={result}
+          onValueChange={setResult}
+          options={[
+            { value: "", label: "全部结果" },
+            { value: "success", label: "成功" },
+            { value: "failure", label: "失败" },
+            { value: "denied", label: "拒绝" },
+          ]}
+        />
       </div>
       <DataTable<AuditEntry>
         loading={isLoading}

@@ -2,7 +2,7 @@ import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, RefreshCw } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
-import { Badge, Button, Checkbox, Field, Input, PageHeader, Select } from "@/components/ui";
+import { Badge, Button, Checkbox, Field, Input, PageHeader, Select, Switch, Textarea } from "@/components/ui";
 import { DataTable } from "@/components/DataTable";
 import { Dialog } from "@/components/Dialog";
 import { useToast } from "@/components/Toast";
@@ -126,25 +126,38 @@ function CreateClientDialog({
       footer={<><Button variant="outline" onClick={onClose}>取消</Button><Button onClick={() => create.mutate()} loading={create.isPending}>创建</Button></>}>
       <div className="space-y-4">
         <Field label="名称"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
-        <Field label="绑定应用（用于权限声明）">
-          <Select value={appId} onChange={(e) => setAppId(e.target.value)}>
-            <option value="">（不绑定）</option>
-            {apps.map((a) => <option key={a.id} value={a.id}>{a.display_name}</option>)}
-          </Select>
+        <Field label="绑定应用" help="绑定后，该客户端登录的用户会在令牌/UserInfo 中携带这个应用下的角色与权限声明。">
+          <Select
+            value={appId}
+            onValueChange={setAppId}
+            placeholder="（不绑定）"
+            options={[{ value: "", label: "（不绑定）" }, ...apps.map((a) => ({ value: a.id, label: a.display_name }))]}
+          />
         </Field>
-        <Field label="回调地址（每行一个）"><textarea className="flex min-h-[72px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={redirects} onChange={(e) => setRedirects(e.target.value)} /></Field>
-        <Field label="Scopes">
+        <Field label="回调地址（每行一个）" help="OAuth 授权完成后允许跳转回的地址，必须与应用实际回调完全一致。">
+          <Textarea value={redirects} onChange={(e) => setRedirects(e.target.value)} placeholder="https://app.example.com/callback" />
+        </Field>
+        <Field label="授权范围 (Scopes)" help="openid 必选；tc.permissions 用于下发该应用下用户的角色与权限。">
           <div className="flex flex-wrap gap-3">
             {ALL_SCOPES.map((s) => (
               <label key={s} className="flex items-center gap-1.5 text-sm">
-                <Checkbox checked={scopes.includes(s)} onChange={(e) => setScopes((prev) => e.target.checked ? [...prev, s] : prev.filter((x) => x !== s))} />
+                <Checkbox
+                  checked={scopes.includes(s)}
+                  onCheckedChange={(checked) => setScopes((prev) => (checked ? [...prev, s] : prev.filter((x) => x !== s)))}
+                />
                 {s}
               </label>
             ))}
           </div>
         </Field>
-        <label className="flex items-center gap-2 text-sm"><Checkbox checked={pub} onChange={(e) => setPub(e.target.checked)} /> 公共客户端 (SPA/移动端，使用 PKCE)</label>
-        <label className="flex items-center gap-2 text-sm"><Checkbox checked={skipConsent} onChange={(e) => setSkipConsent(e.target.checked)} /> 可信应用（跳过同意屏）</label>
+        <div className="flex items-center justify-between rounded-lg border p-3 text-sm">
+          <span>公共客户端（SPA/移动端，使用 PKCE 且无密钥）</span>
+          <Switch checked={pub} onCheckedChange={setPub} />
+        </div>
+        <div className="flex items-center justify-between rounded-lg border p-3 text-sm">
+          <span>可信应用（跳过授权同意屏）</span>
+          <Switch checked={skipConsent} onCheckedChange={setSkipConsent} />
+        </div>
       </div>
     </Dialog>
   );

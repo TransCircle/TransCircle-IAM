@@ -33,9 +33,7 @@ export function UserDetailPage() {
     queryFn: async () => (await api.get("/api/v1/admin/groups")).data.groups ?? [],
   });
 
-  const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ["assignments", id] });
-  };
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["assignments", id] });
 
   const resetPwd = useMutation({
     mutationFn: () => api.post(`/api/v1/admin/users/${id}/reset-password`),
@@ -58,6 +56,7 @@ export function UserDetailPage() {
         status,
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["user", id] }),
+    onError: (e) => toast(errorMessage(e), "error"),
   });
 
   if (!user.data) return null;
@@ -69,13 +68,17 @@ export function UserDetailPage() {
     <div>
       <PageHeader
         title={user.data.username}
-        description={user.data.display_name || user.data.email}
+        description={user.data.display_name || user.data.email || "用户详情"}
         action={
           canWrite && (
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => resetPwd.mutate()}>重置密码</Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => resetPwd.mutate()}>
+                重置密码
+              </Button>
               {hasPermission("iam.users.impersonate") && (
-                <Button variant="outline" onClick={() => impersonate.mutate()}>代登</Button>
+                <Button variant="outline" onClick={() => impersonate.mutate()}>
+                  代登
+                </Button>
               )}
               <Button
                 variant={user.data.status === "active" ? "destructive" : "default"}
@@ -90,23 +93,30 @@ export function UserDetailPage() {
 
       <div className="grid gap-6">
         <Card>
-          <CardHeader><CardTitle>身份组成员</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle>身份组成员</CardTitle>
+          </CardHeader>
           <CardContent className="grid gap-2 sm:grid-cols-2">
             {(groups.data ?? []).map((g) => (
-              <label key={g.id} className="flex items-center gap-2 rounded-md border p-2 text-sm">
+              <label key={g.id} className="flex items-center gap-2.5 rounded-lg border p-2.5 text-sm">
                 <Checkbox
                   checked={groupIds.has(g.id)}
                   disabled={!canWrite}
-                  onChange={async (e) => {
-                    if (e.target.checked) await api.post(`/api/v1/admin/users/${id}/groups`, { id: g.id });
-                    else await api.delete(`/api/v1/admin/users/${id}/groups/${g.id}`);
-                    invalidate();
+                  onCheckedChange={async (checked) => {
+                    try {
+                      if (checked) await api.post(`/api/v1/admin/users/${id}/groups`, { id: g.id });
+                      else await api.delete(`/api/v1/admin/users/${id}/groups/${g.id}`);
+                      invalidate();
+                    } catch (e) {
+                      toast(errorMessage(e), "error");
+                    }
                   }}
                 />
                 <span className="font-medium">{g.display_name}</span>
                 <span className="text-xs text-muted-foreground">{g.key}</span>
               </label>
             ))}
+            {(groups.data ?? []).length === 0 && <p className="text-sm text-muted-foreground">暂无身份组。</p>}
           </CardContent>
         </Card>
 
@@ -117,12 +127,18 @@ export function UserDetailPage() {
           permIds={permIds}
           canWrite={canWrite}
           onChange={invalidate}
+          onError={(e) => toast(errorMessage(e), "error")}
         />
       </div>
 
-      <Dialog open={!!resetResult} onClose={() => setResetResult(null)} title="密码已重置" footer={<Button onClick={() => setResetResult(null)}>完成</Button>}>
+      <Dialog
+        open={!!resetResult}
+        onClose={() => setResetResult(null)}
+        title="密码已重置"
+        footer={<Button onClick={() => setResetResult(null)}>完成</Button>}
+      >
         <p className="text-sm text-muted-foreground">新的临时密码（用户下次登录须改密）：</p>
-        <div className="mt-3 rounded-md border bg-muted/40 p-3 font-mono text-sm">{resetResult}</div>
+        <div className="mt-3 rounded-lg border bg-muted/40 p-3 font-mono text-sm">{resetResult}</div>
       </Dialog>
     </div>
   );
@@ -135,6 +151,7 @@ function AppScopedAssignments({
   permIds,
   canWrite,
   onChange,
+  onError,
 }: {
   userId: string;
   apps: Application[];
@@ -142,6 +159,7 @@ function AppScopedAssignments({
   permIds: Set<string>;
   canWrite: boolean;
   onChange: () => void;
+  onError: (e: unknown) => void;
 }) {
   const [appId, setAppId] = React.useState("");
   React.useEffect(() => {
@@ -159,32 +177,42 @@ function AppScopedAssignments({
     enabled: !!appId,
   });
 
+  async function toggle(fn: () => Promise<unknown>) {
+    try {
+      await fn();
+      onChange();
+    } catch (e) {
+      onError(e);
+    }
+  }
+
   return (
     <Card>
-      <CardHeader className="flex-row items-center justify-between">
+      <CardHeader className="flex-row items-center justify-between gap-3">
         <CardTitle>按应用直接授权</CardTitle>
-        <Select value={appId} onChange={(e) => setAppId(e.target.value)} className="max-w-[220px]">
-          {apps.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.display_name}
-            </option>
-          ))}
-        </Select>
+        <Select
+          value={appId}
+          onValueChange={setAppId}
+          className="max-w-[240px]"
+          options={apps.map((a) => ({ value: a.id, label: a.display_name }))}
+        />
       </CardHeader>
       <CardContent className="grid gap-6 md:grid-cols-2">
         <div>
           <h4 className="mb-2 text-sm font-medium">直接角色</h4>
           <div className="space-y-2">
             {(roles.data ?? []).map((r) => (
-              <label key={r.id} className="flex items-center gap-2 text-sm">
+              <label key={r.id} className="flex items-center gap-2.5 text-sm">
                 <Checkbox
                   checked={roleIds.has(r.id)}
                   disabled={!canWrite}
-                  onChange={async (e) => {
-                    if (e.target.checked) await api.post(`/api/v1/admin/users/${userId}/roles`, { id: r.id });
-                    else await api.delete(`/api/v1/admin/users/${userId}/roles/${r.id}`);
-                    onChange();
-                  }}
+                  onCheckedChange={(checked) =>
+                    toggle(() =>
+                      checked
+                        ? api.post(`/api/v1/admin/users/${userId}/roles`, { id: r.id })
+                        : api.delete(`/api/v1/admin/users/${userId}/roles/${r.id}`)
+                    )
+                  }
                 />
                 {r.display_name} <Badge variant="muted">{r.key}</Badge>
               </label>
@@ -196,15 +224,17 @@ function AppScopedAssignments({
           <h4 className="mb-2 text-sm font-medium">直接权限</h4>
           <div className="space-y-2">
             {(perms.data ?? []).map((p) => (
-              <label key={p.id} className="flex items-center gap-2 text-sm">
+              <label key={p.id} className="flex items-center gap-2.5 text-sm">
                 <Checkbox
                   checked={permIds.has(p.id)}
                   disabled={!canWrite}
-                  onChange={async (e) => {
-                    if (e.target.checked) await api.post(`/api/v1/admin/users/${userId}/permissions`, { id: p.id });
-                    else await api.delete(`/api/v1/admin/users/${userId}/permissions/${p.id}`);
-                    onChange();
-                  }}
+                  onCheckedChange={(checked) =>
+                    toggle(() =>
+                      checked
+                        ? api.post(`/api/v1/admin/users/${userId}/permissions`, { id: p.id })
+                        : api.delete(`/api/v1/admin/users/${userId}/permissions/${p.id}`)
+                    )
+                  }
                 />
                 {p.display_name} <Badge variant="muted">{p.key}</Badge>
               </label>

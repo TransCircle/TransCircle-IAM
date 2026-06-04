@@ -73,9 +73,13 @@ export function ApiTokensPage() {
         footer={<><Button variant="outline" onClick={() => setOpen(false)}>取消</Button><Button onClick={() => create.mutate()} loading={create.isPending}>创建</Button></>}>
         <div className="space-y-4">
           <Field label="名称"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-          <Field label="作用域 (逗号分隔)"><Input value={form.scopes} onChange={(e) => setForm({ ...form, scopes: e.target.value })} /></Field>
-          <Field label="限定应用 Key (逗号分隔，留空=全部)"><Input value={form.apps} onChange={(e) => setForm({ ...form, apps: e.target.value })} /></Field>
-          <Field label="有效天数 (0=永久)"><Input type="number" value={form.days} onChange={(e) => setForm({ ...form, days: Number(e.target.value) })} /></Field>
+          <Field label="作用域 (逗号分隔)" help="查询用户权限的令牌需包含 iam.permissions.read。">
+            <Input value={form.scopes} onChange={(e) => setForm({ ...form, scopes: e.target.value })} />
+          </Field>
+          <Field label="限定应用 (应用 key，逗号分隔)" help="留空表示可查询全部应用；填写后该令牌只能查询这些应用的用户权限。">
+            <Input value={form.apps} onChange={(e) => setForm({ ...form, apps: e.target.value })} />
+          </Field>
+          <Field label="有效天数 (0 = 永久)"><Input type="number" value={form.days} onChange={(e) => setForm({ ...form, days: Number(e.target.value) })} /></Field>
         </div>
       </Dialog>
 

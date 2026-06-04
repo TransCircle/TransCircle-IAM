@@ -62,20 +62,30 @@ export function SettingsPage() {
               disabled={!canWrite}
             />
           </Field>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Attestation">
-              <Select value={form.attestation} onChange={(e) => setForm({ ...form, attestation: e.target.value })} disabled={!canWrite}>
-                <option value="none">none</option>
-                <option value="indirect">indirect</option>
-                <option value="direct">direct</option>
-              </Select>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="证明方式 (Attestation)" help="一般保持 none 即可，除非需要校验认证器厂商证书。">
+              <Select
+                value={form.attestation}
+                onValueChange={(v) => setForm({ ...form, attestation: v })}
+                disabled={!canWrite}
+                options={[
+                  { value: "none", label: "none（推荐）" },
+                  { value: "indirect", label: "indirect" },
+                  { value: "direct", label: "direct" },
+                ]}
+              />
             </Field>
-            <Field label="User Verification">
-              <Select value={form.user_verification} onChange={(e) => setForm({ ...form, user_verification: e.target.value })} disabled={!canWrite}>
-                <option value="required">required</option>
-                <option value="preferred">preferred</option>
-                <option value="discouraged">discouraged</option>
-              </Select>
+            <Field label="用户验证 (User Verification)" help="required 要求指纹/PIN 等本人验证，安全性最高。">
+              <Select
+                value={form.user_verification}
+                onValueChange={(v) => setForm({ ...form, user_verification: v })}
+                disabled={!canWrite}
+                options={[
+                  { value: "required", label: "required（推荐）" },
+                  { value: "preferred", label: "preferred" },
+                  { value: "discouraged", label: "discouraged" },
+                ]}
+              />
             </Field>
           </div>
           {canWrite && (

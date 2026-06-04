@@ -51,7 +51,7 @@ export function GroupsPage() {
         rowKey={(g) => g.id}
         columns={[
           { header: "名称", cell: (g) => <span className="font-medium">{g.display_name}</span> },
-          { header: "Key", cell: (g) => <Badge variant="muted">{g.key}</Badge> },
+          { header: "标识", cell: (g) => <Badge variant="muted">{g.key}</Badge> },
           { header: "描述", cell: (g) => g.description || "—" },
           {
             header: "",
@@ -84,6 +84,7 @@ export function GroupsPage() {
 }
 
 function ManageGroupRolesDialog({ group, onClose, canWrite }: { group: Group; onClose: () => void; canWrite: boolean }) {
+  const { toast } = useToast();
   const [appId, setAppId] = React.useState("");
   const detail = useQuery<{ role_ids: string[] }>({
     queryKey: ["group", group.id],
@@ -107,19 +108,26 @@ function ManageGroupRolesDialog({ group, onClose, canWrite }: { group: Group; on
   return (
     <Dialog open onClose={onClose} title={`管理身份组角色 · ${group.display_name}`} footer={<Button onClick={onClose}>完成</Button>}>
       <div className="space-y-4">
-        <Select value={appId} onChange={(e) => setAppId(e.target.value)}>
-          {(apps.data ?? []).map((a) => <option key={a.id} value={a.id}>{a.display_name}</option>)}
-        </Select>
+        <Select
+          value={appId}
+          onValueChange={setAppId}
+          options={(apps.data ?? []).map((a) => ({ value: a.id, label: a.display_name }))}
+        />
+        <p className="text-xs text-muted-foreground">勾选后，组内所有成员都会获得该应用下的对应角色。</p>
         <div className="space-y-2">
           {(roles.data ?? []).map((r) => (
-            <label key={r.id} className="flex items-center gap-2 text-sm">
+            <label key={r.id} className="flex items-center gap-2.5 text-sm">
               <Checkbox
                 checked={roleIds.has(r.id)}
                 disabled={!canWrite}
-                onChange={async (e) => {
-                  if (e.target.checked) await api.post(`/api/v1/admin/groups/${group.id}/roles`, { id: r.id });
-                  else await api.delete(`/api/v1/admin/groups/${group.id}/roles/${r.id}`);
-                  qc.invalidateQueries({ queryKey: ["group", group.id] });
+                onCheckedChange={async (checked) => {
+                  try {
+                    if (checked) await api.post(`/api/v1/admin/groups/${group.id}/roles`, { id: r.id });
+                    else await api.delete(`/api/v1/admin/groups/${group.id}/roles/${r.id}`);
+                    qc.invalidateQueries({ queryKey: ["group", group.id] });
+                  } catch (e) {
+                    toast(errorMessage(e), "error");
+                  }
                 }}
               />
               {r.display_name} <Badge variant="muted">{r.key}</Badge>
