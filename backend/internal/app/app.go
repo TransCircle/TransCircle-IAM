@@ -29,9 +29,25 @@ func setup(ctx context.Context) (*runtime, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
-	st, err := store.Open(ctx, cfg.DatabaseURL, cfg.RedisURL)
-	if err != nil {
-		return nil, err
+	// Retry the initial connection so a not-yet-ready (or briefly unreachable)
+	// Postgres/Redis self-heals instead of crash-looping the container.
+	var st *store.Store
+	for attempt := 1; ; attempt++ {
+		st, err = store.Open(ctx, cfg.DatabaseURL, cfg.RedisURL)
+		if err == nil {
+			break
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if attempt >= 30 {
+			return nil, fmt.Errorf("connect data stores after %d attempts: %w", attempt, err)
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
 	}
 	return &runtime{cfg: cfg, st: st}, nil
 }
