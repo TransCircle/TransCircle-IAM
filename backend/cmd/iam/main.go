@@ -72,6 +72,9 @@ commands:
   migrate      apply database migrations and exit
   bootstrap    initialize keys, system data, and the first admin, then exit
   healthcheck  probe local readiness
-  admin ...    offline admin operations (reset-mfa, ...)
+  admin <op>   offline break-glass operations:
+                 reset-password <user> [pw]   reset a user's password
+                 reset-mfa <user>             clear a user's MFA factors
+                 grant-super-admin <user>     grant the super_admin role
 `)
 }

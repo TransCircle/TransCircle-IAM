@@ -229,9 +229,68 @@ func Admin(ctx context.Context, args []string) error {
 			return fmt.Errorf("usage: iam admin grant-super-admin <username>")
 		}
 		return adminGrantSuperAdmin(ctx, args[1])
+	case "reset-password":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: iam admin reset-password <username> [new-password]")
+		}
+		explicit := ""
+		if len(args) >= 3 {
+			explicit = args[2]
+		}
+		return adminResetPassword(ctx, args[1], explicit)
 	default:
 		return fmt.Errorf("unknown admin command %q", args[0])
 	}
+}
+
+// adminResetPassword is the break-glass password reset. With no password given it
+// generates a temporary one and forces a change at next login; with an explicit
+// password it sets it directly. Existing MFA factors are left intact.
+func adminResetPassword(ctx context.Context, username, explicit string) error {
+	rt, err := setup(ctx)
+	if err != nil {
+		return err
+	}
+	defer rt.st.Close()
+	repo := rbac.Repo{}
+	hasher := crypto.NewHasher(rt.cfg.Argon2Memory, rt.cfg.Argon2Iterations, rt.cfg.Argon2Parallelism, rt.cfg.Argon2MaxConcurrent)
+
+	password := explicit
+	force := false
+	if password == "" {
+		password = crypto.RandomToken(9)
+		force = true
+	}
+	hash, err := hasher.Hash(ctx, password)
+	if err != nil {
+		return err
+	}
+
+	return rt.st.WithTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		u, err := repo.GetUserByUsername(ctx, tx, username)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO user_credentials (user_id, password_hash, password_change_required, previous_hashes)
+			 VALUES ($1, $2, $3, '{}')
+			 ON CONFLICT (user_id) DO UPDATE
+			   SET password_hash=EXCLUDED.password_hash,
+			       password_change_required=EXCLUDED.password_change_required,
+			       previous_hashes='{}', password_updated_at=now()`,
+			u.ID, hash, force); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE users SET force_password_change=$2 WHERE id=$1`, u.ID, force); err != nil {
+			return err
+		}
+		if force {
+			fmt.Printf("admin: 已为 %s 设置临时密码: %s （下次登录须改密）。\n", username, password)
+		} else {
+			fmt.Printf("admin: 已为 %s 设置新密码。\n", username)
+		}
+		return nil
+	})
 }
 
 // adminGrantSuperAdmin re-grants the super_admin role to a user and re-syncs the
