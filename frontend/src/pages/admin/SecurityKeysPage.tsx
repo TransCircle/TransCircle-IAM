@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, errorMessage } from "@/lib/api";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, PageHeader } from "@/components/ui";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, PageHeader, RelativeTime } from "@/components/ui";
 import { DataTable } from "@/components/DataTable";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/auth/AuthProvider";
 import type { SigningKeyInfo } from "@/lib/types";
-import { formatDate } from "@/lib/utils";
+
 
 export function SecurityKeysPage() {
   const { hasPermission } = useAuth();
@@ -54,7 +54,7 @@ export function SecurityKeysPage() {
               k.status === "previous" ? <Badge>上一版</Badge> :
               <Badge variant="muted">已退役</Badge>,
           },
-          { header: "创建时间", cell: (k) => formatDate(k.created_at) },
+          { header: "创建时间", cell: (k) => <RelativeTime value={k.created_at} /> },
         ]}
       />
     </div>

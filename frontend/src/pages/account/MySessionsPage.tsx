@@ -3,7 +3,7 @@ import { api } from "@/lib/api";
 import { Badge, Button, PageHeader } from "@/components/ui";
 import { DataTable } from "@/components/DataTable";
 import type { Session } from "@/lib/types";
-import { formatDate } from "@/lib/utils";
+import { RelativeTime } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 
 export function MySessionsPage() {
@@ -48,7 +48,7 @@ export function MySessionsPage() {
             ),
           },
           { header: "认证方式", cell: (s) => (s.amr || []).join(", ") },
-          { header: "最近活动", cell: (s) => formatDate(s.last_seen_at) },
+          { header: "最近活动", cell: (s) => <RelativeTime value={s.last_seen_at} /> },
           {
             header: "",
             className: "text-right",

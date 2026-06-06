@@ -2,12 +2,12 @@ import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Settings2 } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
-import { Badge, Button, Checkbox, Field, Input, PageHeader, Select, Textarea } from "@/components/ui";
+import { Badge, Button, Checkbox, Field, Help, Input, PageHeader, Select, Textarea } from "@/components/ui";
 import { DataTable } from "@/components/DataTable";
-import { Dialog } from "@/components/Dialog";
+import { Dialog, ConfirmDialog } from "@/components/Dialog";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/auth/AuthProvider";
-import type { Application, Group, Role } from "@/lib/types";
+import { ADMIN_ROLE_ID, SUPER_ADMIN_ROLE_ID, type Application, type Group, type Role } from "@/lib/types";
 
 export function GroupsPage() {
   const { hasPermission } = useAuth();
@@ -16,6 +16,7 @@ export function GroupsPage() {
   const canWrite = hasPermission("iam.groups.write");
   const [open, setOpen] = React.useState(false);
   const [manage, setManage] = React.useState<Group | null>(null);
+  const [confirm, setConfirm] = React.useState<Group | null>(null);
   const [form, setForm] = React.useState({ key: "", display_name: "", description: "" });
 
   const groups = useQuery<Group[]>({
@@ -34,7 +35,10 @@ export function GroupsPage() {
   });
   const del = useMutation({
     mutationFn: (id: string) => api.delete(`/api/v1/admin/groups/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["groups"] }),
+    onSuccess: () => {
+      setConfirm(null);
+      qc.invalidateQueries({ queryKey: ["groups"] });
+    },
     onError: (e) => toast(errorMessage(e), "error"),
   });
 
@@ -61,7 +65,7 @@ export function GroupsPage() {
                 <div className="flex justify-end gap-1">
                   <Button size="icon" variant="ghost" onClick={() => setManage(g)}><Settings2 className="h-4 w-4" /></Button>
                   {!g.is_system && (
-                    <Button size="icon" variant="ghost" onClick={() => del.mutate(g.id)}><Trash2 className="h-4 w-4" /></Button>
+                    <Button size="icon" variant="ghost" title="删除" onClick={() => setConfirm(g)}><Trash2 className="h-4 w-4" /></Button>
                   )}
                 </div>
               ),
@@ -79,12 +83,25 @@ export function GroupsPage() {
       </Dialog>
 
       {manage && <ManageGroupRolesDialog group={manage} onClose={() => setManage(null)} canWrite={canWrite} />}
+
+      <ConfirmDialog
+        open={!!confirm}
+        onClose={() => setConfirm(null)}
+        onConfirm={() => confirm && del.mutate(confirm.id)}
+        title={`删除身份组「${confirm?.display_name}」?`}
+        description="删除后组成员将失去该组授予的角色。"
+        confirmLabel="删除"
+        destructive
+        loading={del.isPending}
+      />
     </div>
   );
 }
 
 function ManageGroupRolesDialog({ group, onClose, canWrite }: { group: Group; onClose: () => void; canWrite: boolean }) {
   const { toast } = useToast();
+  const { isSuperAdmin } = useAuth();
+  const roleLocked = (r: Role) => (r.id === SUPER_ADMIN_ROLE_ID || r.id === ADMIN_ROLE_ID) && !isSuperAdmin;
   const [appId, setAppId] = React.useState("");
   const detail = useQuery<{ role_ids: string[] }>({
     queryKey: ["group", group.id],
@@ -119,7 +136,7 @@ function ManageGroupRolesDialog({ group, onClose, canWrite }: { group: Group; on
             <label key={r.id} className="flex items-center gap-2.5 text-sm">
               <Checkbox
                 checked={roleIds.has(r.id)}
-                disabled={!canWrite}
+                disabled={!canWrite || roleLocked(r)}
                 onCheckedChange={async (checked) => {
                   try {
                     if (checked) await api.post(`/api/v1/admin/groups/${group.id}/roles`, { id: r.id });
@@ -131,6 +148,7 @@ function ManageGroupRolesDialog({ group, onClose, canWrite }: { group: Group; on
                 }}
               />
               {r.display_name} <Badge variant="muted">{r.key}</Badge>
+              {roleLocked(r) && <Help text="仅超级管理员可将管理员/超级管理员角色授予身份组。" />}
             </label>
           ))}
           {(roles.data ?? []).length === 0 && <p className="text-xs text-muted-foreground">该应用暂无角色。</p>}

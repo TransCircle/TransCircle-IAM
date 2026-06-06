@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
-import { Badge, Button, Field, Input, PageHeader } from "@/components/ui";
+import { Badge, Button, CopyButton, Field, Input, PageHeader } from "@/components/ui";
 import { DataTable } from "@/components/DataTable";
 import { Dialog } from "@/components/Dialog";
 import { useToast } from "@/components/Toast";
@@ -85,9 +85,12 @@ export function UsersPage() {
         footer={<Button onClick={() => setCreated(null)}>完成</Button>}
       >
         <p className="text-sm text-muted-foreground">请将以下临时密码线下告知成员，首次登录将强制改密并绑定 MFA。</p>
-        <div className="mt-3 space-y-2 rounded-md border bg-muted/40 p-3 font-mono text-sm">
+        <div className="mt-3 space-y-2 rounded-lg border bg-muted/40 p-3 font-mono text-sm">
           <div>用户名：{created?.username}</div>
-          <div>临时密码：{created?.password}</div>
+          <div className="flex items-center justify-between gap-2">
+            <span>临时密码：{created?.password}</span>
+            {created && <CopyButton value={created.password} />}
+          </div>
         </div>
       </Dialog>
     </div>

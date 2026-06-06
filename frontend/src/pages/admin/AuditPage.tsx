@@ -1,10 +1,10 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { Badge, Input, PageHeader, Select } from "@/components/ui";
+import { Badge, Input, PageHeader, RelativeTime, Select } from "@/components/ui";
 import { DataTable } from "@/components/DataTable";
 import type { AuditEntry } from "@/lib/types";
-import { formatDate } from "@/lib/utils";
+
 
 export function AuditPage() {
   const [action, setAction] = React.useState("");
@@ -38,7 +38,7 @@ export function AuditPage() {
         rows={data?.entries}
         rowKey={(e) => e.id}
         columns={[
-          { header: "时间", cell: (e) => formatDate(e.occurred_at) },
+          { header: "时间", cell: (e) => <RelativeTime value={e.occurred_at} /> },
           { header: "操作者", cell: (e) => e.actor_label || "—" },
           { header: "动作", cell: (e) => <code className="text-xs">{e.action}</code> },
           { header: "对象", cell: (e) => (e.target_type ? `${e.target_type}:${e.target_id.slice(0, 8)}` : "—") },

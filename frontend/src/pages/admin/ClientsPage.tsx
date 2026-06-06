@@ -2,9 +2,9 @@ import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, RefreshCw } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
-import { Badge, Button, Checkbox, Field, Input, PageHeader, Select, Switch, Textarea } from "@/components/ui";
+import { Badge, Button, Checkbox, CopyButton, Field, Input, PageHeader, Select, Switch, Textarea } from "@/components/ui";
 import { DataTable } from "@/components/DataTable";
-import { Dialog } from "@/components/Dialog";
+import { Dialog, ConfirmDialog } from "@/components/Dialog";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/auth/AuthProvider";
 import type { Application, OAuthClient } from "@/lib/types";
@@ -18,6 +18,7 @@ export function ClientsPage() {
   const canWrite = hasPermission("iam.clients.write");
   const [open, setOpen] = React.useState(false);
   const [secret, setSecret] = React.useState<{ id: string; secret: string } | null>(null);
+  const [confirm, setConfirm] = React.useState<OAuthClient | null>(null);
 
   const clients = useQuery<OAuthClient[]>({
     queryKey: ["clients"],
@@ -30,7 +31,11 @@ export function ClientsPage() {
 
   const del = useMutation({
     mutationFn: (cid: string) => api.delete(`/api/v1/admin/clients/${cid}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["clients"] }),
+    onSuccess: () => {
+      setConfirm(null);
+      qc.invalidateQueries({ queryKey: ["clients"] });
+    },
+    onError: (e) => toast(errorMessage(e), "error"),
   });
   const rotate = useMutation({
     mutationFn: (cid: string) => api.post(`/api/v1/admin/clients/${cid}/rotate-secret`),
@@ -65,7 +70,7 @@ export function ClientsPage() {
                       <RefreshCw className="h-4 w-4" />
                     </Button>
                   )}
-                  <Button size="icon" variant="ghost" onClick={() => del.mutate(c.client_id)}><Trash2 className="h-4 w-4" /></Button>
+                  <Button size="icon" variant="ghost" title="删除" onClick={() => setConfirm(c)}><Trash2 className="h-4 w-4" /></Button>
                 </div>
               ),
           },
@@ -75,9 +80,23 @@ export function ClientsPage() {
       <CreateClientDialog open={open} onClose={() => setOpen(false)} apps={apps.data ?? []}
         onCreated={(s) => { setOpen(false); qc.invalidateQueries({ queryKey: ["clients"] }); if (s) setSecret(s); }} />
 
+      <ConfirmDialog
+        open={!!confirm}
+        onClose={() => setConfirm(null)}
+        onConfirm={() => confirm && del.mutate(confirm.client_id)}
+        title={`删除客户端「${confirm?.client_name}」?`}
+        description="删除后使用该客户端的应用将无法再登录。此操作需要二次验证。"
+        confirmLabel="删除"
+        destructive
+        loading={del.isPending}
+      />
+
       <Dialog open={!!secret} onClose={() => setSecret(null)} title="客户端密钥（仅显示一次）" footer={<Button onClick={() => setSecret(null)}>我已保存</Button>}>
         <p className="text-sm text-muted-foreground">请立即复制保存，关闭后无法再次查看。</p>
-        <div className="mt-3 break-all rounded-md border bg-muted/40 p-3 font-mono text-sm">{secret?.secret}</div>
+        <div className="mt-3 flex items-center justify-between gap-2 break-all rounded-lg border bg-muted/40 p-3 font-mono text-sm">
+          <span className="break-all">{secret?.secret}</span>
+          {secret && <CopyButton value={secret.secret} />}
+        </div>
       </Dialog>
     </div>
   );

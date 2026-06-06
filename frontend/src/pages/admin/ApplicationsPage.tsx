@@ -5,7 +5,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
 import { Badge, Button, Field, Input, PageHeader, Textarea } from "@/components/ui";
 import { DataTable } from "@/components/DataTable";
-import { Dialog } from "@/components/Dialog";
+import { Dialog, ConfirmDialog } from "@/components/Dialog";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/auth/AuthProvider";
 import type { Application } from "@/lib/types";
@@ -16,6 +16,7 @@ export function ApplicationsPage() {
   const qc = useQueryClient();
   const canWrite = hasPermission("iam.applications.write");
   const [open, setOpen] = React.useState(false);
+  const [confirm, setConfirm] = React.useState<Application | null>(null);
   const [form, setForm] = React.useState({ key: "", display_name: "", description: "" });
 
   const apps = useQuery<Application[]>({
@@ -34,7 +35,10 @@ export function ApplicationsPage() {
   });
   const del = useMutation({
     mutationFn: (id: string) => api.delete(`/api/v1/admin/applications/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["applications"] }),
+    onSuccess: () => {
+      setConfirm(null);
+      qc.invalidateQueries({ queryKey: ["applications"] });
+    },
     onError: (e) => toast(errorMessage(e), "error"),
   });
 
@@ -66,7 +70,7 @@ export function ApplicationsPage() {
             className: "text-right",
             cell: (a) =>
               canWrite && !a.is_system && (
-                <Button size="icon" variant="ghost" onClick={() => del.mutate(a.id)}><Trash2 className="h-4 w-4" /></Button>
+                <Button size="icon" variant="ghost" title="删除" onClick={() => setConfirm(a)}><Trash2 className="h-4 w-4" /></Button>
               ),
           },
         ]}
@@ -82,6 +86,17 @@ export function ApplicationsPage() {
           <Field label="描述"><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
         </div>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!confirm}
+        onClose={() => setConfirm(null)}
+        onConfirm={() => confirm && del.mutate(confirm.id)}
+        title={`删除应用「${confirm?.display_name}」?`}
+        description="删除后该应用下的权限/角色与绑定的 OIDC 客户端将无法使用。此操作需要二次验证。"
+        confirmLabel="删除"
+        destructive
+        loading={del.isPending}
+      />
     </div>
   );
 }

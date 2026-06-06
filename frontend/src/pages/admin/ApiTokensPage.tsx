@@ -2,13 +2,12 @@ import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
-import { Badge, Button, Field, Input, PageHeader } from "@/components/ui";
+import { Badge, Button, CopyButton, Field, Input, PageHeader, RelativeTime } from "@/components/ui";
 import { DataTable } from "@/components/DataTable";
-import { Dialog } from "@/components/Dialog";
+import { Dialog, ConfirmDialog } from "@/components/Dialog";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/auth/AuthProvider";
 import type { APIToken } from "@/lib/types";
-import { formatDate } from "@/lib/utils";
 
 export function ApiTokensPage() {
   const { hasPermission } = useAuth();
@@ -17,6 +16,7 @@ export function ApiTokensPage() {
   const canWrite = hasPermission("iam.apptokens.write");
   const [open, setOpen] = React.useState(false);
   const [created, setCreated] = React.useState<string | null>(null);
+  const [confirm, setConfirm] = React.useState<APIToken | null>(null);
   const [form, setForm] = React.useState({ name: "", apps: "", scopes: "iam.permissions.read", days: 0 });
 
   const tokens = useQuery<APIToken[]>({
@@ -40,7 +40,11 @@ export function ApiTokensPage() {
   });
   const revoke = useMutation({
     mutationFn: (id: string) => api.delete(`/api/v1/admin/api-tokens/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["api-tokens"] }),
+    onSuccess: () => {
+      setConfirm(null);
+      qc.invalidateQueries({ queryKey: ["api-tokens"] });
+    },
+    onError: (e) => toast(errorMessage(e), "error"),
   });
 
   return (
@@ -59,12 +63,12 @@ export function ApiTokensPage() {
           { header: "前缀", cell: (t) => <code className="text-xs">tcp_{t.prefix}…</code> },
           { header: "限定应用", cell: (t) => (t.allowed_app_keys?.length ? t.allowed_app_keys.join(", ") : "全部") },
           { header: "状态", cell: (t) => (t.revoked_at ? <Badge variant="muted">已吊销</Badge> : <Badge variant="success">有效</Badge>) },
-          { header: "最近使用", cell: (t) => formatDate(t.last_used_at) },
+          { header: "最近使用", cell: (t) => <RelativeTime value={t.last_used_at} /> },
           {
             header: "",
             className: "text-right",
             cell: (t) =>
-              canWrite && !t.revoked_at && <Button size="icon" variant="ghost" onClick={() => revoke.mutate(t.id)}><Trash2 className="h-4 w-4" /></Button>,
+              canWrite && !t.revoked_at && <Button size="icon" variant="ghost" title="吊销" onClick={() => setConfirm(t)}><Trash2 className="h-4 w-4" /></Button>,
           },
         ]}
       />
@@ -83,9 +87,23 @@ export function ApiTokensPage() {
         </div>
       </Dialog>
 
+      <ConfirmDialog
+        open={!!confirm}
+        onClose={() => setConfirm(null)}
+        onConfirm={() => confirm && revoke.mutate(confirm.id)}
+        title={`吊销令牌「${confirm?.name}」?`}
+        description="吊销后使用该令牌的服务将立即失去访问权限。"
+        confirmLabel="吊销"
+        destructive
+        loading={revoke.isPending}
+      />
+
       <Dialog open={!!created} onClose={() => setCreated(null)} title="令牌已创建（仅显示一次）" footer={<Button onClick={() => setCreated(null)}>我已保存</Button>}>
         <p className="text-sm text-muted-foreground">请立即保存，关闭后无法再次查看。在请求头中使用 <code>Authorization: Bearer &lt;token&gt;</code>。</p>
-        <div className="mt-3 break-all rounded-md border bg-muted/40 p-3 font-mono text-sm">{created}</div>
+        <div className="mt-3 flex items-center justify-between gap-2 break-all rounded-lg border bg-muted/40 p-3 font-mono text-sm">
+          <span className="break-all">{created}</span>
+          {created && <CopyButton value={created} />}
+        </div>
       </Dialog>
     </div>
   );

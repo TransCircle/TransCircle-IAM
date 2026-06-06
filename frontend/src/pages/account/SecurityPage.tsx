@@ -57,8 +57,10 @@ export function SecurityPage() {
 
   return (
     <div>
-      <PageHeader title="安全与 MFA" description="管理你的通行密钥、TOTP 与恢复码。" />
+      <PageHeader title="安全与多因素" description="修改密码,管理你的通行密钥、TOTP 与恢复码。" />
       <div className="grid gap-6">
+        <ChangePasswordCard />
+
         <Card>
           <CardHeader className="flex-row items-center justify-between">
             <CardTitle>通行密钥</CardTitle>
@@ -178,5 +180,56 @@ function TOTPDialog({ open, onClose, onDone }: { open: boolean; onClose: () => v
         </Field>
       </div>
     </Dialog>
+  );
+}
+
+function ChangePasswordCard() {
+  const { toast } = useToast();
+  const [current, setCurrent] = React.useState("");
+  const [next, setNext] = React.useState("");
+  const [confirm, setConfirm] = React.useState("");
+
+  const change = useMutation({
+    mutationFn: () => api.post("/api/v1/auth/password/change", { current_password: current, new_password: next }),
+    onSuccess: () => {
+      toast("密码已修改", "success");
+      setCurrent("");
+      setNext("");
+      setConfirm("");
+    },
+    onError: (e) => toast(errorMessage(e), "error"),
+  });
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (next.length < 12) return toast("新密码至少需要 12 个字符", "error");
+    if (next !== confirm) return toast("两次输入的新密码不一致", "error");
+    change.mutate();
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>修改密码</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={submit} className="grid max-w-md gap-4">
+          <Field label="当前密码">
+            <Input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" />
+          </Field>
+          <Field label="新密码" hint="至少 12 个字符">
+            <Input type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" />
+          </Field>
+          <Field label="确认新密码">
+            <Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" />
+          </Field>
+          <div>
+            <Button type="submit" loading={change.isPending}>
+              更新密码
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   );
 }

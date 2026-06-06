@@ -1,20 +1,21 @@
 import * as React from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ShieldAlert } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Checkbox, PageHeader, Select } from "@/components/ui";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Checkbox, CopyButton, Field, Help, Input, PageHeader, Select, Tabs } from "@/components/ui";
 import { Dialog } from "@/components/Dialog";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/auth/AuthProvider";
-import type { Application, Group, Permission, Role, User } from "@/lib/types";
+import { ADMIN_ROLE_ID, SUPER_ADMIN_ROLE_ID, type Application, type Group, type Permission, type Role, type User } from "@/lib/types";
 
 export function UserDetailPage() {
   const { id = "" } = useParams();
-  const { hasPermission } = useAuth();
+  const { me, hasPermission, isSuperAdmin } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
   const canWrite = hasPermission("iam.users.write");
-  const [resetResult, setResetResult] = React.useState<string | null>(null);
+  const [resetOpen, setResetOpen] = React.useState(false);
 
   const user = useQuery<User>({
     queryKey: ["user", id],
@@ -34,12 +35,14 @@ export function UserDetailPage() {
   });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["assignments", id] });
+  const directRoles = new Set(assignments.data?.roles ?? []);
+  const targetIsSuper = directRoles.has(SUPER_ADMIN_ROLE_ID);
+  const targetIsAdmin = directRoles.has(ADMIN_ROLE_ID);
+  const isSelf = me?.user.id === id;
+  // Per the backend rule, these actions are not allowed on a super-admin or on
+  // oneself; hide them so the UI matches what the server will accept.
+  const canManage = canWrite && !isSelf && !targetIsSuper;
 
-  const resetPwd = useMutation({
-    mutationFn: () => api.post(`/api/v1/admin/users/${id}/reset-password`),
-    onSuccess: (r) => setResetResult(r.data.temp_password),
-    onError: (e) => toast(errorMessage(e), "error"),
-  });
   const impersonate = useMutation({
     mutationFn: () => api.post(`/api/v1/admin/users/${id}/impersonate`),
     onSuccess: () => {
@@ -50,17 +53,12 @@ export function UserDetailPage() {
   });
   const toggleStatus = useMutation({
     mutationFn: (status: string) =>
-      api.patch(`/api/v1/admin/users/${id}`, {
-        email: user.data?.email ?? "",
-        display_name: user.data?.display_name ?? "",
-        status,
-      }),
+      api.patch(`/api/v1/admin/users/${id}`, { email: user.data?.email ?? "", display_name: user.data?.display_name ?? "", status }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["user", id] }),
     onError: (e) => toast(errorMessage(e), "error"),
   });
 
   if (!user.data) return null;
-  const roleIds = new Set(assignments.data?.roles ?? []);
   const permIds = new Set(assignments.data?.permissions ?? []);
   const groupIds = new Set(assignments.data?.groups ?? []);
 
@@ -70,26 +68,37 @@ export function UserDetailPage() {
         title={user.data.username}
         description={user.data.display_name || user.data.email || "用户详情"}
         action={
-          canWrite && (
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => resetPwd.mutate()}>
-                重置密码
-              </Button>
-              {hasPermission("iam.users.impersonate") && (
-                <Button variant="outline" onClick={() => impersonate.mutate()}>
-                  代登
+          <div className="flex flex-wrap gap-2">
+            {targetIsSuper && <Badge variant="warning">超级管理员</Badge>}
+            {targetIsAdmin && !targetIsSuper && <Badge variant="muted">管理员</Badge>}
+            {canManage && (
+              <>
+                <Button variant="outline" onClick={() => setResetOpen(true)}>
+                  重置密码
                 </Button>
-              )}
-              <Button
-                variant={user.data.status === "active" ? "destructive" : "default"}
-                onClick={() => toggleStatus.mutate(user.data!.status === "active" ? "disabled" : "active")}
-              >
-                {user.data.status === "active" ? "禁用" : "启用"}
-              </Button>
-            </div>
-          )
+                {hasPermission("iam.users.impersonate") && (
+                  <Button variant="outline" onClick={() => impersonate.mutate()}>
+                    代登
+                  </Button>
+                )}
+                <Button
+                  variant={user.data.status === "active" ? "destructive" : "default"}
+                  onClick={() => toggleStatus.mutate(user.data!.status === "active" ? "disabled" : "active")}
+                >
+                  {user.data.status === "active" ? "禁用账户" : "启用账户"}
+                </Button>
+              </>
+            )}
+          </div>
         }
       />
+
+      {(isSelf || targetIsSuper) && canWrite && (
+        <div className="mb-5 flex items-start gap-2.5 rounded-xl border bg-accent/40 p-3 text-sm text-accent-foreground">
+          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{isSelf ? "你不能在此重置自己的密码或禁用自己,请前往「个人中心」。" : "超级管理员的密码与状态不可在此修改。"}</span>
+        </div>
+      )}
 
       <div className="grid gap-6">
         <Card>
@@ -101,7 +110,7 @@ export function UserDetailPage() {
               <label key={g.id} className="flex items-center gap-2.5 rounded-lg border p-2.5 text-sm">
                 <Checkbox
                   checked={groupIds.has(g.id)}
-                  disabled={!canWrite}
+                  disabled={!canManage}
                   onCheckedChange={async (checked) => {
                     try {
                       if (checked) await api.post(`/api/v1/admin/users/${id}/groups`, { id: g.id });
@@ -123,41 +132,101 @@ export function UserDetailPage() {
         <AppScopedAssignments
           userId={id}
           apps={apps.data ?? []}
-          roleIds={roleIds}
+          roleIds={directRoles}
           permIds={permIds}
-          canWrite={canWrite}
+          canWrite={canManage}
+          isSuperAdmin={isSuperAdmin}
           onChange={invalidate}
           onError={(e) => toast(errorMessage(e), "error")}
         />
       </div>
 
-      <Dialog
-        open={!!resetResult}
-        onClose={() => setResetResult(null)}
-        title="密码已重置"
-        footer={<Button onClick={() => setResetResult(null)}>完成</Button>}
-      >
-        <p className="text-sm text-muted-foreground">新的临时密码（用户下次登录须改密）：</p>
-        <div className="mt-3 rounded-lg border bg-muted/40 p-3 font-mono text-sm">{resetResult}</div>
-      </Dialog>
+      <ResetPasswordDialog open={resetOpen} onClose={() => setResetOpen(false)} userId={id} username={user.data.username} />
     </div>
   );
 }
 
+function ResetPasswordDialog({ open, onClose, userId, username }: { open: boolean; onClose: () => void; userId: string; username: string }) {
+  const { toast } = useToast();
+  const [mode, setMode] = React.useState("temp");
+  const [password, setPassword] = React.useState("");
+  const [result, setResult] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!open) {
+      setMode("temp");
+      setPassword("");
+      setResult(null);
+    }
+  }, [open]);
+
+  const reset = useMutation({
+    mutationFn: () => api.post(`/api/v1/admin/users/${userId}/reset-password`, { mode, password: mode === "manual" ? password : undefined }),
+    onSuccess: (r) => {
+      if (r.data.temp_password) setResult(r.data.temp_password);
+      else {
+        toast("密码已更新", "success");
+        onClose();
+      }
+    },
+    onError: (e) => toast(errorMessage(e), "error"),
+  });
+
+  if (result) {
+    return (
+      <Dialog open={open} onClose={onClose} title="临时密码已生成" footer={<Button onClick={onClose}>完成</Button>}>
+        <p className="text-sm text-muted-foreground">请将以下一次性临时密码线下告知 {username},其首次登录须改密。</p>
+        <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border bg-muted/40 p-3 font-mono text-sm">
+          <span className="break-all">{result}</span>
+          <CopyButton value={result} />
+        </div>
+      </Dialog>
+    );
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={`重置「${username}」的密码`}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>取消</Button>
+          <Button variant="destructive" onClick={() => reset.mutate()} loading={reset.isPending}>确认重置</Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="flex items-start gap-2.5 rounded-lg bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>重置会立即吊销该用户所有登录会话。此操作需要二次验证。</span>
+        </div>
+        <Tabs
+          value={mode}
+          onValueChange={setMode}
+          tabs={[{ value: "temp", label: "生成临时密码" }, { value: "manual", label: "手动设置" }]}
+        />
+        {mode === "temp" ? (
+          <p className="text-sm text-muted-foreground">系统生成一次性临时密码并展示给你;该用户首次登录将被强制改密。</p>
+        ) : (
+          <Field label="新密码" help="直接设为该密码,用户登录后无需强制改密。至少 12 位。">
+            <Input type="text" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="至少 12 个字符" />
+          </Field>
+        )}
+      </div>
+    </Dialog>
+  );
+}
+
 function AppScopedAssignments({
-  userId,
-  apps,
-  roleIds,
-  permIds,
-  canWrite,
-  onChange,
-  onError,
+  userId, apps, roleIds, permIds, canWrite, isSuperAdmin, onChange, onError,
 }: {
   userId: string;
   apps: Application[];
   roleIds: Set<string>;
   permIds: Set<string>;
   canWrite: boolean;
+  isSuperAdmin: boolean;
   onChange: () => void;
   onError: (e: unknown) => void;
 }) {
@@ -186,16 +255,16 @@ function AppScopedAssignments({
     }
   }
 
+  function roleLocked(r: Role) {
+    // Only super-admins may assign the built-in admin / super_admin roles.
+    return (r.id === SUPER_ADMIN_ROLE_ID || r.id === ADMIN_ROLE_ID) && !isSuperAdmin;
+  }
+
   return (
     <Card>
-      <CardHeader className="flex-row items-center justify-between gap-3">
+      <CardHeader className="flex-row flex-wrap items-center justify-between gap-3">
         <CardTitle>按应用直接授权</CardTitle>
-        <Select
-          value={appId}
-          onValueChange={setAppId}
-          className="max-w-[240px]"
-          options={apps.map((a) => ({ value: a.id, label: a.display_name }))}
-        />
+        <Select value={appId} onValueChange={setAppId} className="w-full max-w-[240px]" options={apps.map((a) => ({ value: a.id, label: a.display_name }))} />
       </CardHeader>
       <CardContent className="grid gap-6 md:grid-cols-2">
         <div>
@@ -205,7 +274,7 @@ function AppScopedAssignments({
               <label key={r.id} className="flex items-center gap-2.5 text-sm">
                 <Checkbox
                   checked={roleIds.has(r.id)}
-                  disabled={!canWrite}
+                  disabled={!canWrite || roleLocked(r)}
                   onCheckedChange={(checked) =>
                     toggle(() =>
                       checked
@@ -215,6 +284,7 @@ function AppScopedAssignments({
                   }
                 />
                 {r.display_name} <Badge variant="muted">{r.key}</Badge>
+                {roleLocked(r) && <Help text="仅超级管理员可授予管理员/超级管理员角色。" />}
               </label>
             ))}
             {(roles.data ?? []).length === 0 && <p className="text-xs text-muted-foreground">该应用暂无角色。</p>}
