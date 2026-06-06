@@ -59,6 +59,27 @@ func (s *PasswordService) SetInitial(ctx context.Context, db store.DBTX, userID 
 	return err
 }
 
+// SetByAdmin sets a user's password out-of-band (admin reset). It replaces the
+// credential and synchronizes the force-password-change gate on both tables.
+func (s *PasswordService) SetByAdmin(ctx context.Context, db store.DBTX, userID uuid.UUID, plaintext string, forceChange bool) error {
+	hash, err := s.hasher.Hash(ctx, plaintext)
+	if err != nil {
+		return err
+	}
+	if _, err := db.Exec(ctx,
+		`INSERT INTO user_credentials (user_id, password_hash, password_change_required, previous_hashes)
+		 VALUES ($1, $2, $3, '{}')
+		 ON CONFLICT (user_id) DO UPDATE
+		   SET password_hash=EXCLUDED.password_hash,
+		       password_change_required=EXCLUDED.password_change_required,
+		       previous_hashes='{}', password_updated_at=now()`,
+		userID, hash, forceChange); err != nil {
+		return err
+	}
+	_, err = db.Exec(ctx, `UPDATE users SET force_password_change=$2 WHERE id=$1`, userID, forceChange)
+	return err
+}
+
 // Verify checks a login password. Returns ErrNoCredential / crypto.ErrMismatch.
 // On a parameter upgrade it transparently re-hashes in the background tx-free.
 func (s *PasswordService) Verify(ctx context.Context, st *store.Store, userID uuid.UUID, plaintext string) error {

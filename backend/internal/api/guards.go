@@ -72,6 +72,20 @@ func (h *Handlers) assertCanGrantRole(ctx context.Context, actor, roleID uuid.UU
 	return nil
 }
 
+// guardRoleGrant enforces that only super-admins may grant/revoke the built-in
+// admin/super_admin roles, and that doing so requires fresh step-up.
+func (h *Handlers) guardRoleGrant(ctx context.Context, actor, roleID uuid.UUID) error {
+	if err := h.assertCanGrantRole(ctx, actor, roleID); err != nil {
+		return err
+	}
+	if roleID == rbac.SuperAdminRole || roleID == rbac.AdminRole {
+		if err := h.Guard.CheckStepUp(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // assertNotLastSuperAdmin prevents removing the super_admin role from the only
 // remaining holder (avoids a lockout).
 func (h *Handlers) assertNotLastSuperAdmin(ctx context.Context, roleID uuid.UUID) error {
@@ -84,6 +98,19 @@ func (h *Handlers) assertNotLastSuperAdmin(ctx context.Context, roleID uuid.UUID
 	}
 	if n <= 1 {
 		return httpx.ErrForbidden.WithDetail("不能移除最后一个超级管理员")
+	}
+	return nil
+}
+
+// assertNotSuperAdminTarget blocks admin-page password resets against a
+// super_admin (they must use self-service or the break-glass CLI).
+func (h *Handlers) assertNotSuperAdminTarget(ctx context.Context, target uuid.UUID) error {
+	roles, err := h.systemRoles(ctx, target)
+	if err != nil {
+		return err
+	}
+	if slices.Contains(roles, rbac.SuperAdminKey) {
+		return httpx.ErrForbidden.WithDetail("超级管理员的密码不可在此重置，请用个人中心修改或破玻璃命令")
 	}
 	return nil
 }

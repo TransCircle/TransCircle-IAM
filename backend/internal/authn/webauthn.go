@@ -16,6 +16,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/transcircle/iam/internal/crypto"
+	"github.com/transcircle/iam/internal/logging"
 	"github.com/transcircle/iam/internal/store"
 )
 
@@ -216,9 +217,12 @@ func (s *WebAuthnService) FinishLogin(ctx context.Context, u UserInfo, ticket st
 	if err != nil {
 		return fmt.Errorf("authn: 通行密钥验证失败: %w", err)
 	}
-	_, _ = s.st.Pool.Exec(ctx,
+	// Persist the clone-detection counter; log (don't fail the login) on error.
+	if _, uerr := s.st.Pool.Exec(ctx,
 		`UPDATE webauthn_credentials SET sign_count=$2, last_used_at=now() WHERE credential_id=$1`,
-		cred.ID, int64(cred.Authenticator.SignCount))
+		cred.ID, int64(cred.Authenticator.SignCount)); uerr != nil {
+		logging.From(ctx).Error("webauthn: update sign_count failed", "error", uerr)
+	}
 	return nil
 }
 

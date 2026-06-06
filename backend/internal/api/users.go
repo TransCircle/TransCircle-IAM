@@ -100,6 +100,9 @@ func (h *Handlers) updateUser(w http.ResponseWriter, r *http.Request) error {
 		return httpx.ErrBadRequest.WithDetail("状态非法")
 	}
 	ctx := r.Context()
+	if actorID(r) == id && req.Status == "disabled" {
+		return httpx.ErrBadRequest.WithDetail("不能禁用自己的账户")
+	}
 	if err := h.assertCanManageUser(ctx, actorID(r), id); err != nil {
 		return err
 	}
@@ -128,6 +131,9 @@ func (h *Handlers) deleteUser(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	ctx := r.Context()
+	if actorID(r) == id {
+		return httpx.ErrBadRequest.WithDetail("不能删除自己的账户")
+	}
 	if err := h.assertCanManageUser(ctx, actorID(r), id); err != nil {
 		return err
 	}
@@ -147,33 +153,66 @@ func (h *Handlers) deleteUser(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+type resetPwdReq struct {
+	Mode     string `json:"mode"`     // "temp" | "manual"
+	Password string `json:"password"` // required when mode == "manual"
+}
+
 func (h *Handlers) resetPassword(w http.ResponseWriter, r *http.Request) error {
 	id, err := pathUUID(r, "id")
 	if err != nil {
 		return err
 	}
 	ctx := r.Context()
-	if err := h.assertCanManageUser(ctx, actorID(r), id); err != nil {
+	actor := actorID(r)
+	if actor == id {
+		return httpx.ErrBadRequest.WithDetail("请在个人中心修改自己的密码")
+	}
+	if err := h.assertCanManageUser(ctx, actor, id); err != nil {
 		return err
 	}
+	if err := h.assertNotSuperAdminTarget(ctx, id); err != nil {
+		return err
+	}
+	var req resetPwdReq
+	if err := httpx.DecodeJSON(r, &req); err != nil {
+		return err
+	}
+
 	passwords := authn.NewPasswordService(h.Hasher, 12, 5)
-	temp := crypto.RandomToken(9)
-	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		if err := passwords.SetInitial(ctx, tx, id, temp); err != nil {
-			return err
+	var temp string
+	password := req.Password
+	force := true
+	if req.Mode == "manual" {
+		if len([]rune(password)) < 12 {
+			return httpx.ErrBadRequest.WithDetail("密码至少需要 12 个字符")
 		}
-		if err := h.Repo.SetUserFlags(ctx, tx, id, true, false); err != nil {
+		force = false // admin chose this password deliberately
+	} else {
+		password = crypto.RandomToken(9)
+		temp = password
+	}
+
+	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if err := passwords.SetByAdmin(ctx, tx, id, password, force); err != nil {
 			return err
 		}
 		if err := h.Sessions.RevokeAllForUser(ctx, tx, id, nil); err != nil {
 			return err
 		}
-		return h.Audit.Write(ctx, tx, audit.Event{Action: "iam.user.reset_password", TargetType: "user", TargetID: id.String()})
+		return h.Audit.Write(ctx, tx, audit.Event{
+			Action: "iam.user.reset_password", TargetType: "user", TargetID: id.String(),
+			Metadata: map[string]any{"mode": req.Mode},
+		})
 	})
 	if err != nil {
 		return err
 	}
-	httpx.JSON(w, r, http.StatusOK, map[string]string{"temp_password": temp})
+	out := map[string]string{"status": "ok"}
+	if temp != "" {
+		out["temp_password"] = temp
+	}
+	httpx.JSON(w, r, http.StatusOK, out)
 	return nil
 }
 
@@ -276,6 +315,11 @@ func (h *Handlers) mutateAssignment(w http.ResponseWriter, r *http.Request, kind
 		if err := h.assertCanGrantRole(ctx, by, req.ID); err != nil {
 			return err
 		}
+		if req.ID == rbac.SuperAdminRole || req.ID == rbac.AdminRole {
+			if err := h.Guard.CheckStepUp(ctx); err != nil {
+				return err
+			}
+		}
 	}
 	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if err := fn(ctx, tx, userID, req.ID, by); err != nil {
@@ -311,6 +355,11 @@ func (h *Handlers) mutateAssignmentPath(w http.ResponseWriter, r *http.Request, 
 		}
 		if err := h.assertNotLastSuperAdmin(ctx, target); err != nil {
 			return err
+		}
+		if target == rbac.SuperAdminRole || target == rbac.AdminRole {
+			if err := h.Guard.CheckStepUp(ctx); err != nil {
+				return err
+			}
 		}
 	}
 	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {

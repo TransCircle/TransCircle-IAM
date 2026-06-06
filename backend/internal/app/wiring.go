@@ -92,16 +92,17 @@ func buildDeps(ctx context.Context, rt *runtime, log *slog.Logger) (server.Deps,
 	}, nil
 }
 
-// oauthCSRFExempt exempts non-cookie-authenticated OAuth + machine endpoints from
-// CSRF (Bearer/Basic authed). The consent POST is NOT exempt (cookie-authed).
+// oauthCSRFExempt exempts the non-cookie-authenticated OAuth machine endpoints
+// (Bearer/Basic authed) from CSRF. The consent POST is NOT exempt (cookie-authed).
+// The machine permissions API is GET-only and Bearer-authed, so it never reaches
+// the CSRF check and needs no explicit exemption.
 func oauthCSRFExempt(r *http.Request) bool {
 	p := r.URL.Path
 	switch {
 	case strings.HasPrefix(p, "/oauth2/token"),
 		strings.HasPrefix(p, "/oauth2/introspect"),
 		strings.HasPrefix(p, "/oauth2/revoke"),
-		strings.HasPrefix(p, "/oauth2/userinfo"),
-		p == "/api/v1/permissions":
+		strings.HasPrefix(p, "/oauth2/userinfo"):
 		return true
 	}
 	return false

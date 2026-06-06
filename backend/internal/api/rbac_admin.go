@@ -59,6 +59,9 @@ func (h *Handlers) updateApplication(w http.ResponseWriter, r *http.Request) err
 	if err != nil {
 		return err
 	}
+	if err := assertNotSystemApp(id); err != nil {
+		return err
+	}
 	var req appReq
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		return err
@@ -87,6 +90,9 @@ func (h *Handlers) deleteApplication(w http.ResponseWriter, r *http.Request) err
 		return err
 	}
 	ctx := r.Context()
+	if err := assertNotSystemApp(id); err != nil {
+		return err
+	}
 	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if err := h.Repo.SoftDeleteApplication(ctx, tx, id); err != nil {
 			return err
@@ -471,6 +477,9 @@ func (h *Handlers) addGroupRole(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	ctx := r.Context()
+	if err := h.guardRoleGrant(ctx, actorID(r), req.ID); err != nil {
+		return err
+	}
 	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if err := h.Repo.AddGroupRole(ctx, tx, id, req.ID); err != nil {
 			return err
@@ -497,6 +506,9 @@ func (h *Handlers) removeGroupRole(w http.ResponseWriter, r *http.Request) error
 		return err
 	}
 	ctx := r.Context()
+	if err := h.guardRoleGrant(ctx, actorID(r), roleID); err != nil {
+		return err
+	}
 	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if err := h.Repo.BumpPermVersionForGroup(ctx, tx, id); err != nil {
 			return err

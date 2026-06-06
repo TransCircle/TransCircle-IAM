@@ -62,6 +62,18 @@ func (h *Handlers) createAPIToken(w http.ResponseWriter, r *http.Request) error 
 	if req.Name == "" {
 		return httpx.ErrBadRequest.WithDetail("名称必填")
 	}
+	ctx0 := r.Context()
+	// An empty allowed_app_keys means "all applications" — only a super-admin may
+	// mint such a broad token (least privilege).
+	if len(req.AllowedAppKeys) == 0 {
+		super, err := h.isSuperAdmin(ctx0, actorID(r))
+		if err != nil {
+			return err
+		}
+		if !super {
+			return httpx.ErrBadRequest.WithDetail("请指定该令牌可访问的应用 key(仅超级管理员可创建不限应用的令牌)")
+		}
+	}
 	prefix := crypto.RandomToken(6)
 	secret := crypto.RandomToken(24)
 	full := "tcp_" + prefix + "_" + secret
