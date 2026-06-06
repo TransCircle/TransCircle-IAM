@@ -84,7 +84,7 @@ func (h *Handlers) handleLogin(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	// No MFA factor yet: establish a session; the gate will force enrollment.
-	sess, err := h.establishSession(ctx, user, ip, httpx.UserAgent(ctx), []string{"pwd"}, 1, false, nil)
+	sess, err := h.establishSession(ctx, user, ip, httpx.UserAgent(ctx), []string{"pwd"}, 1, false, false, nil)
 	if err != nil {
 		return err
 	}

@@ -60,12 +60,16 @@ func NewManager(st *store.Store, idleTTL, absoluteTTL time.Duration) *Manager {
 
 // CreateParams describes a new session.
 type CreateParams struct {
-	UserID         uuid.UUID
-	IP             string
-	UserAgent      string
-	AMR            []string
-	AAL            int
-	MFASatisfied   bool
+	UserID       uuid.UUID
+	IP           string
+	UserAgent    string
+	AMR          []string
+	AAL          int
+	MFASatisfied bool
+	// StepUp marks the session's MFA as "fresh" for step-up — true only for a
+	// strong factor (TOTP/passkey), false for recovery-code or password-only
+	// logins, so recovery codes never satisfy step-up.
+	StepUp         bool
 	ImpersonatorID *uuid.UUID
 }
 
@@ -86,7 +90,9 @@ func (m *Manager) Create(ctx context.Context, db store.DBTX, p CreateParams) (*S
 		MFASatisfied:   p.MFASatisfied,
 		ImpersonatorID: p.ImpersonatorID,
 	}
-	if p.MFASatisfied {
+	// mfa_satisfied_at drives the step-up freshness window; only set it for a
+	// strong factor, never for recovery-code logins.
+	if p.StepUp {
 		s.MFAAt = &now
 	}
 	var ipArg any
@@ -189,15 +195,20 @@ func (m *Manager) touch(ctx context.Context, s *Session) {
 	m.writeMirror(ctx, s)
 }
 
-// MarkMFASatisfied records a fresh MFA on the session (for step-up).
+// MarkMFASatisfied records a fresh MFA on the session (for step-up). It only
+// updates a still-valid session and fails closed otherwise.
 func (m *Manager) MarkMFASatisfied(ctx context.Context, db store.DBTX, id uuid.UUID, amr string, aal int) error {
 	now := time.Now()
-	_, err := db.Exec(ctx,
+	ct, err := db.Exec(ctx,
 		`UPDATE sessions SET mfa_satisfied=true, mfa_satisfied_at=$2, aal=$3,
-		        amr = (SELECT array(SELECT DISTINCT unnest(amr || $4::text[]))) WHERE id=$1`,
+		        amr = (SELECT array(SELECT DISTINCT unnest(amr || $4::text[])))
+		   WHERE id=$1 AND revoked_at IS NULL AND expires_at > now() AND idle_expires_at > now()`,
 		id, now, aal, []string{amr})
 	if err != nil {
 		return err
+	}
+	if ct.RowsAffected() != 1 {
+		return ErrInvalid
 	}
 	store.AfterCommit(ctx, func(ctx context.Context) { _ = m.st.Redis.Del(ctx, mirrorKey(id)).Err() })
 	return nil

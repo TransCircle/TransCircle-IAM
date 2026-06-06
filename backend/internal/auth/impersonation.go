@@ -53,7 +53,7 @@ func (h *Handlers) Impersonate(w http.ResponseWriter, r *http.Request, target *r
 
 	adminSession := admin.SessionID
 	var sess *sessions.Session
-	sess, err = h.establishSession(ctx, target, httpx.ClientIP(ctx), httpx.UserAgent(ctx), []string{"impersonation"}, 2, true, &admin.UserID)
+	sess, err = h.establishSession(ctx, target, httpx.ClientIP(ctx), httpx.UserAgent(ctx), []string{"impersonation"}, 2, true, true, &admin.UserID)
 	if err != nil {
 		return err
 	}

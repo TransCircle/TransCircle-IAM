@@ -57,8 +57,8 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.Method("POST", "/api/v1/admin/users", h.guard(authz.PermUsersWrite, h.createUser))
 		r.Method("GET", "/api/v1/admin/users/{id}", h.guard(authz.PermUsersRead, h.getUser))
 		r.Method("PATCH", "/api/v1/admin/users/{id}", h.guard(authz.PermUsersWrite, h.updateUser))
-		r.Method("DELETE", "/api/v1/admin/users/{id}", h.guard(authz.PermUsersDelete, h.deleteUser))
-		r.Method("POST", "/api/v1/admin/users/{id}/reset-password", h.guard(authz.PermUsersWrite, h.resetPassword))
+		r.Method("DELETE", "/api/v1/admin/users/{id}", h.guardStepUp(authz.PermUsersDelete, h.deleteUser))
+		r.Method("POST", "/api/v1/admin/users/{id}/reset-password", h.guardStepUp(authz.PermUsersWrite, h.resetPassword))
 		r.Method("GET", "/api/v1/admin/users/{id}/assignments", h.guard(authz.PermUsersRead, h.getUserAssignments))
 		r.Method("POST", "/api/v1/admin/users/{id}/roles", h.guard(authz.PermUsersWrite, h.addUserRole))
 		r.Method("DELETE", "/api/v1/admin/users/{id}/roles/{roleID}", h.guard(authz.PermUsersWrite, h.removeUserRole))
@@ -73,7 +73,7 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.Method("GET", "/api/v1/admin/applications", h.guard(authz.PermAppsRead, h.listApplications))
 		r.Method("POST", "/api/v1/admin/applications", h.guard(authz.PermAppsWrite, h.createApplication))
 		r.Method("PATCH", "/api/v1/admin/applications/{id}", h.guard(authz.PermAppsWrite, h.updateApplication))
-		r.Method("DELETE", "/api/v1/admin/applications/{id}", h.guard(authz.PermAppsDelete, h.deleteApplication))
+		r.Method("DELETE", "/api/v1/admin/applications/{id}", h.guardStepUp(authz.PermAppsDelete, h.deleteApplication))
 
 		// Permissions
 		r.Method("GET", "/api/v1/admin/applications/{appID}/permissions", h.guard(authz.PermPermsRead, h.listPermissions))
@@ -102,9 +102,9 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.Method("GET", "/api/v1/admin/clients", h.guard(authz.PermClientsRead, h.listClients))
 		r.Method("POST", "/api/v1/admin/clients", h.guard(authz.PermClientsWrite, h.createClient))
 		r.Method("PATCH", "/api/v1/admin/clients/{clientID}", h.guard(authz.PermClientsWrite, h.updateClient))
-		r.Method("DELETE", "/api/v1/admin/clients/{clientID}", h.guard(authz.PermClientsDelete, h.deleteClient))
+		r.Method("DELETE", "/api/v1/admin/clients/{clientID}", h.guardStepUp(authz.PermClientsDelete, h.deleteClient))
 		r.Method("POST", "/api/v1/admin/clients/{clientID}/rotate-secret", h.guardStepUp(authz.PermClientsRotateSecret, h.rotateClientSecret))
-		r.Method("GET", "/api/v1/admin/clients/{clientID}/secret", h.guard(authz.PermClientsRead, h.revealClientSecret))
+		r.Method("POST", "/api/v1/admin/clients/{clientID}/secret/reveal", h.guardStepUp(authz.PermClientsRotateSecret, h.revealClientSecret))
 
 		// Sessions (admin)
 		r.Method("GET", "/api/v1/admin/users/{id}/sessions", h.guard(authz.PermSessionsRead, h.listUserSessions))
@@ -116,9 +116,9 @@ func (h *Handlers) Mount(r chi.Router) {
 
 		// Settings
 		r.Method("GET", "/api/v1/admin/settings/webauthn", h.guard(authz.PermSettingsRead, h.getWebAuthnRP))
-		r.Method("PUT", "/api/v1/admin/settings/webauthn", h.guard(authz.PermSettingsWrite, h.updateWebAuthnRP))
+		r.Method("PUT", "/api/v1/admin/settings/webauthn", h.guardStepUp(authz.PermSettingsWrite, h.updateWebAuthnRP))
 		r.Method("GET", "/api/v1/admin/settings/policy", h.guard(authz.PermSettingsRead, h.getPolicy))
-		r.Method("PUT", "/api/v1/admin/settings/policy", h.guard(authz.PermSettingsWrite, h.updatePolicy))
+		r.Method("PUT", "/api/v1/admin/settings/policy", h.guardStepUp(authz.PermSettingsWrite, h.updatePolicy))
 
 		// Security (keys)
 		r.Method("GET", "/api/v1/admin/security/keys", h.guard(authz.PermSecurityRead, h.listKeys))

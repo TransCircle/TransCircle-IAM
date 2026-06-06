@@ -104,7 +104,7 @@ func (h *Handlers) takeTicket(ctx context.Context, t string) (*loginTicket, erro
 
 // ----- session establishment -----
 
-func (h *Handlers) establishSession(ctx context.Context, user *rbac.User, ip, ua string, amr []string, aal int, mfaSatisfied bool, impersonator *uuid.UUID) (*sessions.Session, error) {
+func (h *Handlers) establishSession(ctx context.Context, user *rbac.User, ip, ua string, amr []string, aal int, mfaSatisfied, stepUp bool, impersonator *uuid.UUID) (*sessions.Session, error) {
 	var sess *sessions.Session
 	err := h.Store.WithTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		s, err := h.Sessions.Create(ctx, tx, sessions.CreateParams{
@@ -114,6 +114,7 @@ func (h *Handlers) establishSession(ctx context.Context, user *rbac.User, ip, ua
 			AMR:            amr,
 			AAL:            aal,
 			MFASatisfied:   mfaSatisfied,
+			StepUp:         stepUp,
 			ImpersonatorID: impersonator,
 		})
 		if err != nil {

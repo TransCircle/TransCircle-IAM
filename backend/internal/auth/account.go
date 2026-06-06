@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"net/http"
+	"slices"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -11,6 +12,7 @@ import (
 	"github.com/transcircle/iam/internal/audit"
 	"github.com/transcircle/iam/internal/authctx"
 	"github.com/transcircle/iam/internal/httpx"
+	"github.com/transcircle/iam/internal/rbac"
 )
 
 // MountAccount registers /me and self-service account endpoints. me is reachable
@@ -19,6 +21,11 @@ func (h *Handlers) MountAccount(r chi.Router) {
 	r.Group(func(r chi.Router) {
 		r.Use(h.RequireAuth)
 		r.Method("GET", "/api/v1/me", httpx.Handler(h.handleMe))
+		// Step-up: re-verify MFA within the session for sensitive operations.
+		r.Method("GET", "/api/v1/auth/step-up/factors", httpx.Handler(h.handleStepUpFactors))
+		r.Method("POST", "/api/v1/auth/step-up/totp", httpx.Handler(h.handleStepUpTOTP))
+		r.Method("POST", "/api/v1/auth/step-up/webauthn/begin", httpx.Handler(h.handleStepUpWebAuthnBegin))
+		r.Method("POST", "/api/v1/auth/step-up/webauthn/finish", httpx.Handler(h.handleStepUpWebAuthnFinish))
 	})
 	r.Group(func(r chi.Router) {
 		r.Use(h.RequireAuth)
@@ -38,6 +45,8 @@ type meResp struct {
 	RequiredAction string   `json:"required_action"`
 	MFA            any      `json:"mfa"`
 	Permissions    []string `json:"permissions"`
+	Roles          []string `json:"roles"`          // system-app role keys held by the caller
+	IsSuperAdmin   bool     `json:"is_super_admin"` // convenience flag for UI gating
 	Impersonator   *meActor `json:"impersonator"`
 }
 
@@ -73,11 +82,20 @@ func (h *Handlers) handleMe(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	roles, err := h.Repo.EffectiveRoles(ctx, h.Store.Pool, user.ID, rbac.SystemAppID)
+	if err != nil {
+		return err
+	}
+	if roles == nil {
+		roles = []string{}
+	}
 	resp := meResp{
 		User:           meUser{ID: user.ID, Username: user.Username, DisplayName: user.DisplayName, Email: user.Email, Status: user.Status},
 		RequiredAction: action,
 		MFA:            mfa,
 		Permissions:    perms,
+		Roles:          roles,
+		IsSuperAdmin:   slices.Contains(roles, rbac.SuperAdminKey),
 	}
 	if p.ImpersonatorID != uuid.Nil {
 		resp.Impersonator = &meActor{ID: p.ImpersonatorID, Username: p.ImpersonatorLabel}

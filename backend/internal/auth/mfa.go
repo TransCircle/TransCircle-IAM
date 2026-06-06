@@ -37,7 +37,8 @@ func (h *Handlers) completeMFALogin(w http.ResponseWriter, r *http.Request, lt *
 	if err != nil {
 		return err
 	}
-	sess, err := h.establishSession(ctx, user, httpx.ClientIP(ctx), httpx.UserAgent(ctx), []string{"pwd", factor}, 2, true, nil)
+	// Recovery codes authenticate the session but must NOT satisfy step-up.
+	sess, err := h.establishSession(ctx, user, httpx.ClientIP(ctx), httpx.UserAgent(ctx), []string{"pwd", factor}, 2, true, factor != "recovery", nil)
 	if err != nil {
 		return err
 	}
