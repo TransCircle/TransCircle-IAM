@@ -12,6 +12,15 @@ export async function registerPasskey(name: string): Promise<void> {
   );
 }
 
+// stepUpPasskey re-verifies the current user's passkey within an active session
+// (refreshes the step-up window).
+export async function stepUpPasskey(): Promise<void> {
+  const begin = await api.post("/api/v1/auth/step-up/webauthn/begin");
+  const { options, wa_ticket } = begin.data as { options: unknown; wa_ticket: string };
+  const assertion = await startAuthentication({ optionsJSON: options as any });
+  await api.post(`/api/v1/auth/step-up/webauthn/finish?wt=${encodeURIComponent(wa_ticket)}`, assertion);
+}
+
 // loginPasskey runs the assertion ceremony during login for the given ticket.
 export async function loginPasskey(ticket: string): Promise<{ required_action: string }> {
   const begin = await api.post("/api/v1/auth/webauthn/login/begin", { ticket });
