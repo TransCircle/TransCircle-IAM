@@ -1,6 +1,8 @@
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
-import { Check, ChevronDown, HelpCircle } from "lucide-react";
+import { Check, ChevronDown, HelpCircle, Copy } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
+import { zhCN } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 
 /* ----------------------------- Button ----------------------------- */
@@ -329,6 +331,85 @@ export function Help({ text, className }: { text: string; className?: string }) 
       )}
     </span>
   );
+}
+
+/* ----------------------------- Tabs ----------------------------- */
+
+export function Tabs({
+  tabs,
+  value,
+  onValueChange,
+  className,
+}: {
+  tabs: { value: string; label: React.ReactNode }[];
+  value: string;
+  onValueChange: (v: string) => void;
+  className?: string;
+}) {
+  return (
+    <div className={cn("inline-flex gap-1 rounded-xl bg-muted p-1", className)}>
+      {tabs.map((t) => (
+        <button
+          key={t.value}
+          type="button"
+          onClick={() => onValueChange(t.value)}
+          className={cn(
+            "rounded-lg px-4 py-1.5 text-sm font-medium transition-all",
+            value === t.value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ----------------------------- Skeleton ----------------------------- */
+
+export function Skeleton({ className }: { className?: string }) {
+  return (
+    <div className={cn("relative overflow-hidden rounded-md bg-muted", className)}>
+      <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.4s_infinite] bg-gradient-to-r from-transparent via-foreground/5 to-transparent" />
+    </div>
+  );
+}
+
+/* ----------------------------- CopyButton ----------------------------- */
+
+export function CopyButton({ value, className, label }: { value: string; className?: string; label?: string }) {
+  const [copied, setCopied] = React.useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        navigator.clipboard?.writeText(value);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+        className
+      )}
+    >
+      {copied ? <Check className="h-3.5 w-3.5 text-[hsl(var(--success))]" /> : <Copy className="h-3.5 w-3.5" />}
+      {label ?? (copied ? "已复制" : "复制")}
+    </button>
+  );
+}
+
+/* ----------------------------- RelativeTime ----------------------------- */
+
+export function RelativeTime({ value }: { value?: string | null }) {
+  if (!value) return <span className="text-muted-foreground">—</span>;
+  const d = new Date(value);
+  let rel = "";
+  try {
+    rel = formatDistanceToNow(d, { addSuffix: true, locale: zhCN });
+  } catch {
+    rel = d.toLocaleString("zh-CN", { hour12: false });
+  }
+  return <span title={d.toLocaleString("zh-CN", { hour12: false })}>{rel}</span>;
 }
 
 /* ----------------------------- Layout helpers ----------------------------- */

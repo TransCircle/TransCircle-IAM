@@ -9,6 +9,7 @@ interface AuthState {
   error: unknown;
   refresh: () => void;
   hasPermission: (perm: string) => boolean;
+  isSuperAdmin: boolean;
 }
 
 const Ctx = React.createContext<AuthState>({
@@ -17,6 +18,7 @@ const Ctx = React.createContext<AuthState>({
   error: null,
   refresh: () => {},
   hasPermission: () => false,
+  isSuperAdmin: false,
 });
 
 export function useAuth() {
@@ -38,6 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     error,
     refresh: () => qc.invalidateQueries({ queryKey: ["me"] }),
     hasPermission: (perm: string) => !!data?.permissions?.includes(perm),
+    isSuperAdmin: !!data?.is_super_admin,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

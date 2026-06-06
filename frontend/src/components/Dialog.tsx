@@ -1,6 +1,7 @@
 import * as React from "react";
-import { X } from "lucide-react";
+import { X, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "./ui";
 
 export function Dialog({
   open,
@@ -59,7 +60,7 @@ export function Dialog({
       />
       <div
         className={cn(
-          "relative z-10 w-full max-w-lg rounded-xl border bg-card p-6 shadow-2xl transition-all duration-200",
+          "relative z-10 max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-2xl border bg-card p-6 shadow-2xl transition-all duration-200",
           show ? "translate-y-0 scale-100 opacity-100" : "translate-y-3 scale-[0.97] opacity-0",
           className
         )}
@@ -77,5 +78,52 @@ export function Dialog({
         {footer && <div className="mt-6 flex justify-end gap-2">{footer}</div>}
       </div>
     </div>
+  );
+}
+
+/* A confirmation dialog for destructive / sensitive actions. */
+export function ConfirmDialog({
+  open,
+  onClose,
+  onConfirm,
+  title,
+  description,
+  confirmLabel = "确认",
+  destructive,
+  loading,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title: string;
+  description?: string;
+  confirmLabel?: string;
+  destructive?: boolean;
+  loading?: boolean;
+}) {
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={title}
+      description={description}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>
+            取消
+          </Button>
+          <Button variant={destructive ? "destructive" : "default"} onClick={onConfirm} loading={loading}>
+            {confirmLabel}
+          </Button>
+        </>
+      }
+    >
+      {destructive && (
+        <div className="flex items-start gap-3 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>此操作不可撤销，请确认后继续。</span>
+        </div>
+      )}
+    </Dialog>
   );
 }

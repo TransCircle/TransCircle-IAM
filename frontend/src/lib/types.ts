@@ -17,8 +17,14 @@ export interface Me {
   required_action: "none" | "change_password" | "enroll_mfa";
   mfa: MFAStatus;
   permissions: string[];
+  roles: string[];
+  is_super_admin: boolean;
   impersonator: { id: string; username: string } | null;
 }
+
+// Fixed built-in role IDs (mirror of backend rbac.SuperAdminRole / AdminRole).
+export const SUPER_ADMIN_ROLE_ID = "00000000-0000-0000-0000-000000000002";
+export const ADMIN_ROLE_ID = "00000000-0000-0000-0000-000000000003";
 
 export interface User {
   id: string;

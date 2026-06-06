@@ -3,48 +3,71 @@
 @tailwind utilities;
 
 :root {
-  --background: 220 33% 98%;
-  --foreground: 222 32% 16%;
+  /* Brand: deep indigo → violet → fuchsia, a memorable identity. */
+  --brand-1: 245 80% 60%;
+  --brand-2: 268 83% 62%;
+  --brand-3: 320 80% 62%;
+
+  --background: 240 30% 99%;
+  --foreground: 240 20% 14%;
   --card: 0 0% 100%;
-  --card-foreground: 222 32% 16%;
-  --primary: 243 75% 59%;
+  --card-foreground: 240 20% 14%;
+  --popover: 0 0% 100%;
+
+  --primary: 250 84% 60%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 220 24% 95%;
-  --secondary-foreground: 222 32% 20%;
-  --muted: 220 24% 96%;
-  --muted-foreground: 220 12% 46%;
-  --accent: 243 75% 96%;
-  --accent-foreground: 243 60% 40%;
+  --secondary: 245 30% 96%;
+  --secondary-foreground: 245 30% 24%;
+  --muted: 240 20% 96%;
+  --muted-foreground: 240 8% 46%;
+  --accent: 250 84% 96%;
+  --accent-foreground: 250 70% 42%;
+
+  --success: 158 64% 40%;
+  --warning: 35 92% 50%;
+  --info: 217 91% 56%;
   --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 100%;
-  --success: 152 60% 40%;
-  --warning: 38 92% 50%;
-  --border: 220 20% 90%;
-  --input: 220 20% 88%;
-  --ring: 243 75% 59%;
-  --radius: 0.75rem;
+
+  --border: 240 18% 90%;
+  --input: 240 18% 88%;
+  --ring: 250 84% 60%;
+  --radius: 0.85rem;
+
+  --glass: 0 0% 100% / 0.7;
 }
 
 .dark {
-  --background: 224 32% 8%;
-  --foreground: 215 28% 90%;
-  --card: 224 28% 11%;
-  --card-foreground: 215 28% 90%;
-  --primary: 243 80% 67%;
-  --primary-foreground: 224 47% 11%;
-  --secondary: 222 20% 18%;
-  --secondary-foreground: 215 28% 90%;
-  --muted: 222 20% 16%;
-  --muted-foreground: 218 14% 60%;
-  --accent: 243 40% 22%;
-  --accent-foreground: 243 80% 85%;
-  --destructive: 0 63% 55%;
+  --brand-1: 245 80% 66%;
+  --brand-2: 268 83% 68%;
+  --brand-3: 320 80% 66%;
+
+  --background: 246 32% 7%;
+  --foreground: 240 16% 92%;
+  --card: 245 26% 11%;
+  --card-foreground: 240 16% 92%;
+  --popover: 245 26% 12%;
+
+  --primary: 252 90% 70%;
+  --primary-foreground: 246 47% 10%;
+  --secondary: 245 20% 18%;
+  --secondary-foreground: 240 16% 92%;
+  --muted: 245 20% 16%;
+  --muted-foreground: 240 10% 62%;
+  --accent: 250 40% 24%;
+  --accent-foreground: 250 90% 88%;
+
+  --success: 158 56% 50%;
+  --warning: 35 92% 60%;
+  --info: 217 91% 64%;
+  --destructive: 0 64% 58%;
   --destructive-foreground: 0 0% 100%;
-  --success: 152 52% 50%;
-  --warning: 38 92% 58%;
-  --border: 222 18% 22%;
-  --input: 222 18% 26%;
-  --ring: 243 80% 67%;
+
+  --border: 245 18% 22%;
+  --input: 245 18% 26%;
+  --ring: 252 90% 70%;
+
+  --glass: 245 26% 13% / 0.6;
 }
 
 * {
@@ -61,53 +84,61 @@ body {
   margin: 0;
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+  font-family: "Inter", "Inter var", -apple-system, BlinkMacSystemFont, "Segoe UI",
     "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-size: 15px;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-/* Refined, slim scrollbars. */
 * {
   scrollbar-width: thin;
   scrollbar-color: hsl(var(--border)) transparent;
 }
-*::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-*::-webkit-scrollbar-thumb {
-  background: hsl(var(--border));
-  border-radius: 9999px;
-}
-*::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.5);
+*::-webkit-scrollbar { width: 9px; height: 9px; }
+*::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 9999px; }
+*::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.5); }
+
+@layer components {
+  /* Signature brand gradient + a frosted-glass panel. */
+  .brand-gradient {
+    background-image: linear-gradient(
+      135deg,
+      hsl(var(--brand-1)),
+      hsl(var(--brand-2)) 50%,
+      hsl(var(--brand-3))
+    );
+  }
+  .brand-text {
+    background-image: linear-gradient(135deg, hsl(var(--brand-1)), hsl(var(--brand-3)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .glass {
+    background-color: hsl(var(--glass));
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
 }
 
 @layer utilities {
-  @keyframes fade-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-  @keyframes zoom-in {
-    from { opacity: 0; transform: translateY(8px) scale(0.97); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
-  }
-  @keyframes slide-in-right {
-    from { opacity: 0; transform: translateX(16px); }
-    to { opacity: 1; transform: translateX(0); }
-  }
-  @keyframes slide-in-left {
-    from { transform: translateX(-100%); }
-    to { transform: translateX(0); }
-  }
-  @keyframes pop-in {
-    from { opacity: 0; transform: translateY(-4px) scale(0.98); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
-  }
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes zoom-in { from { opacity: 0; transform: translateY(8px) scale(0.97); } to { opacity: 1; transform: none; } }
+  @keyframes slide-in-right { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
+  @keyframes slide-in-left { from { transform: translateX(-100%); } to { transform: none; } }
+  @keyframes pop-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: none; } }
+  @keyframes shimmer { 100% { transform: translateX(100%); } }
+  @keyframes float-slow { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
+
   .animate-fade-in { animation: fade-in 0.18s ease-out; }
-  .animate-zoom-in { animation: zoom-in 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
-  .animate-slide-in-right { animation: slide-in-right 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
-  .animate-slide-in-left { animation: slide-in-left 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+  .animate-zoom-in { animation: zoom-in 0.22s cubic-bezier(0.16, 1, 0.3, 1); }
+  .animate-slide-in-right { animation: slide-in-right 0.26s cubic-bezier(0.16, 1, 0.3, 1); }
+  .animate-slide-in-left { animation: slide-in-left 0.26s cubic-bezier(0.16, 1, 0.3, 1); }
   .animate-pop-in { animation: pop-in 0.14s ease-out; }
+  .animate-float-slow { animation: float-slow 9s ease-in-out infinite; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
 }
