@@ -116,11 +116,11 @@ func (s *ClientService) Create(ctx context.Context, db store.DBTX, p CreateParam
 	clientID := "tc_" + crypto.RandomToken(12)
 	c := &Client{
 		ID: id, ClientID: clientID, ClientName: p.ClientName, AppID: p.AppID, Public: p.Public,
-		RedirectURIs: p.RedirectURIs, PostLogoutRedirectURIs: p.PostLogoutRedirectURIs,
+		RedirectURIs: orEmpty(p.RedirectURIs), PostLogoutRedirectURIs: orEmpty(p.PostLogoutRedirectURIs),
 		GrantTypes:     defaultIfEmpty(p.GrantTypes, []string{"authorization_code", "refresh_token"}),
 		ResponseTypes:  defaultIfEmpty(p.ResponseTypes, []string{"code"}),
 		AllowedScopes:  defaultIfEmpty(p.AllowedScopes, []string{"openid", "profile", "email"}),
-		AllowedAppKeys: p.AllowedAppKeys, SkipConsent: p.SkipConsent, PKCERequired: true, Active: true,
+		AllowedAppKeys: orEmpty(p.AllowedAppKeys), SkipConsent: p.SkipConsent, PKCERequired: true, Active: true,
 	}
 	authMethod := "client_secret_basic"
 	var secretPlain, secretHash string
@@ -165,8 +165,11 @@ func (s *ClientService) Update(ctx context.Context, db store.DBTX, clientID stri
 		`UPDATE oauth_clients SET client_name=$2, redirect_uris=$3, post_logout_redirect_uris=$4,
 		    grant_types=$5, response_types=$6, allowed_scopes=$7, allowed_app_keys=$8, skip_consent=$9, app_id=$10
 		  WHERE client_id=$1`,
-		clientID, p.ClientName, p.RedirectURIs, p.PostLogoutRedirectURIs, p.GrantTypes, p.ResponseTypes,
-		p.AllowedScopes, p.AllowedAppKeys, p.SkipConsent, p.AppID)
+		clientID, p.ClientName, orEmpty(p.RedirectURIs), orEmpty(p.PostLogoutRedirectURIs),
+		defaultIfEmpty(p.GrantTypes, []string{"authorization_code", "refresh_token"}),
+		defaultIfEmpty(p.ResponseTypes, []string{"code"}),
+		defaultIfEmpty(p.AllowedScopes, []string{"openid", "profile", "email"}),
+		orEmpty(p.AllowedAppKeys), p.SkipConsent, p.AppID)
 	if err != nil {
 		return err
 	}
@@ -267,6 +270,15 @@ func (s *ClientService) secretHashes(ctx context.Context, clientID string) (curr
 func defaultIfEmpty(v, def []string) []string {
 	if len(v) == 0 {
 		return def
+	}
+	return v
+}
+
+// orEmpty coalesces a nil slice to an empty one so NOT NULL text[] columns are
+// never sent a SQL NULL (pgx encodes a nil slice as NULL).
+func orEmpty(v []string) []string {
+	if v == nil {
+		return []string{}
 	}
 	return v
 }
