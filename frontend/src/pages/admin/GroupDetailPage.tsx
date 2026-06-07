@@ -92,7 +92,8 @@ export function GroupDetailPage() {
     return <div className="text-sm text-destructive">身份组不存在或加载失败。</div>;
   }
   const g = detail.data.group;
-  const roleIds = new Set(detail.data.role_ids);
+  const roleIds = new Set(detail.data.role_ids ?? []);
+  const memberCount = detail.data.member_ids?.length ?? 0;
   const roleLocked = (r: Role) => (r.id === SUPER_ADMIN_ROLE_ID || r.id === ADMIN_ROLE_ID) && !isSuperAdmin;
 
   async function toggleRole(r: Role, checked: boolean) {
@@ -140,7 +141,7 @@ export function GroupDetailPage() {
             <Field label="描述">
               <Textarea value={meta.description} disabled={!canWrite || g.is_system} onChange={(e) => setMeta({ ...meta, description: e.target.value })} />
             </Field>
-            <p className="text-xs text-muted-foreground">成员数量：{detail.data.member_ids.length}（成员通过用户详情页的「身份组」管理）。</p>
+            <p className="text-xs text-muted-foreground">成员数量：{memberCount}（成员通过用户详情页的「身份组」管理）。</p>
           </CardContent>
         </Card>
 

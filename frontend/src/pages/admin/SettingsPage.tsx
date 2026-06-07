@@ -57,7 +57,7 @@ export function SettingsPage() {
           </Field>
           <Field label="允许的来源 (Origins，每行一个)">
             <Textarea
-              value={form.origins.join("\n")}
+              value={(form.origins ?? []).join("\n")}
               spellCheck={false}
               onChange={(e) => setForm({ ...form, origins: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) })}
               disabled={!canWrite}

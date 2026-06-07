@@ -67,11 +67,11 @@ export function ProfilePage() {
             />
             <div className="pt-2">
               <div className="mb-2 text-muted-foreground">系统管理权限</div>
-              {me.permissions.length === 0 ? (
+              {(me.permissions ?? []).length === 0 ? (
                 <p className="text-muted-foreground">你没有任何系统管理权限。</p>
               ) : (
                 <div className="flex flex-wrap gap-1.5">
-                  {me.permissions.map((p) => (
+                  {(me.permissions ?? []).map((p) => (
                     <Badge key={p} variant="muted">
                       {p}
                     </Badge>
