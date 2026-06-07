@@ -42,17 +42,36 @@ func (wr *Writer) List(ctx context.Context, f Filter) ([]Entry, error) {
 	if f.Limit <= 0 || f.Limit > 200 {
 		f.Limit = 50
 	}
+	// Resolve a human-readable target label at query time: prefer the label stored
+	// on the event, otherwise look the object up by its target_id so the UI never
+	// has to show a bare internal id. The filtered page is materialized first (CTE)
+	// so the joins only run over the returned rows.
 	const q = `
-SELECT id, occurred_at, actor_user_id, actor_label, impersonator_user_id, action,
-       target_type, target_id, target_label, result, host(ip), user_agent, request_id, metadata
-FROM audit_log
-WHERE ($1='' OR action ILIKE '%'||$1||'%')
-  AND ($2='' OR actor_label ILIKE '%'||$2||'%')
-  AND ($3='' OR result = $3)
-  AND ($4::timestamptz IS NULL OR occurred_at >= $4)
-  AND ($5::timestamptz IS NULL OR occurred_at <= $5)
-ORDER BY occurred_at DESC
-LIMIT $6 OFFSET $7`
+WITH a AS (
+  SELECT id, occurred_at, actor_user_id, actor_label, impersonator_user_id, action,
+         target_type, target_id, target_label, result, ip, user_agent, request_id, metadata
+  FROM audit_log
+  WHERE ($1='' OR action ILIKE '%'||$1||'%')
+    AND ($2='' OR actor_label ILIKE '%'||$2||'%')
+    AND ($3='' OR result = $3)
+    AND ($4::timestamptz IS NULL OR occurred_at >= $4)
+    AND ($5::timestamptz IS NULL OR occurred_at <= $5)
+  ORDER BY occurred_at DESC
+  LIMIT $6 OFFSET $7
+)
+SELECT a.id, a.occurred_at, a.actor_user_id, a.actor_label, a.impersonator_user_id, a.action,
+       a.target_type, a.target_id,
+       COALESCE(NULLIF(a.target_label, ''), u.username, oc.client_name, app.display_name,
+                g.display_name, ro.display_name, pm.display_name, '') AS target_label,
+       a.result, host(a.ip), a.user_agent, a.request_id, a.metadata
+FROM a
+LEFT JOIN users u          ON a.target_type = 'user'        AND a.target_id = u.id::text
+LEFT JOIN oauth_clients oc ON a.target_type = 'client'      AND a.target_id = oc.client_id
+LEFT JOIN applications app ON a.target_type = 'application' AND a.target_id = app.id::text
+LEFT JOIN groups g         ON a.target_type = 'group'       AND a.target_id = g.id::text
+LEFT JOIN roles ro         ON a.target_type = 'role'        AND a.target_id = ro.id::text
+LEFT JOIN permissions pm   ON a.target_type = 'permission'  AND a.target_id = pm.id::text
+ORDER BY a.occurred_at DESC`
 	rows, err := wr.st.Pool.Query(ctx, q, f.Action, f.Actor, f.Result, f.Since, f.Until, f.Limit, f.Offset)
 	if err != nil {
 		return nil, err
