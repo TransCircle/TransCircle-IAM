@@ -289,6 +289,24 @@ func (Repo) SetUserFlags(ctx context.Context, db store.DBTX, id uuid.UUID, force
 	return err
 }
 
+// SetUserOnboardingFlags partially updates the onboarding gate flags: a nil
+// pointer leaves that column unchanged (COALESCE), so an admin edit can toggle
+// one flag without disturbing the other.
+func (Repo) SetUserOnboardingFlags(ctx context.Context, db store.DBTX, id uuid.UUID, forcePwd, mustMFA *bool) error {
+	ct, err := db.Exec(ctx,
+		`UPDATE users SET force_password_change=COALESCE($2, force_password_change),
+		    must_enroll_mfa=COALESCE($3, must_enroll_mfa)
+		  WHERE id=$1 AND deleted_at IS NULL`,
+		id, forcePwd, mustMFA)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // SoftDeleteUser marks a user deleted.
 func (Repo) SoftDeleteUser(ctx context.Context, db store.DBTX, id uuid.UUID) error {
 	_, err := db.Exec(ctx,

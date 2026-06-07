@@ -95,7 +95,8 @@ func (s *ClientService) List(ctx context.Context) ([]Client, error) {
 	return out, rows.Err()
 }
 
-// CreateParams describes a new client.
+// CreateParams describes a new or edited client. PKCERequired and Active default
+// to true at creation; on update they carry the caller's chosen values.
 type CreateParams struct {
 	ClientName             string
 	AppID                  *uuid.UUID
@@ -106,7 +107,10 @@ type CreateParams struct {
 	ResponseTypes          []string
 	AllowedScopes          []string
 	AllowedAppKeys         []string
+	Audience               []string
 	SkipConsent            bool
+	PKCERequired           bool
+	Active                 bool
 }
 
 // Create inserts a client and returns it plus the generated secret (shown once
@@ -120,7 +124,8 @@ func (s *ClientService) Create(ctx context.Context, db store.DBTX, p CreateParam
 		GrantTypes:     defaultIfEmpty(p.GrantTypes, []string{"authorization_code", "refresh_token"}),
 		ResponseTypes:  defaultIfEmpty(p.ResponseTypes, []string{"code"}),
 		AllowedScopes:  defaultIfEmpty(p.AllowedScopes, []string{"openid", "profile", "email"}),
-		AllowedAppKeys: orEmpty(p.AllowedAppKeys), SkipConsent: p.SkipConsent, PKCERequired: true, Active: true,
+		AllowedAppKeys: orEmpty(p.AllowedAppKeys), Audience: orEmpty(p.Audience),
+		SkipConsent: p.SkipConsent, PKCERequired: p.PKCERequired, Active: p.Active,
 	}
 	authMethod := "client_secret_basic"
 	var secretPlain, secretHash string
@@ -147,11 +152,11 @@ func (s *ClientService) Create(ctx context.Context, db store.DBTX, p CreateParam
 		`INSERT INTO oauth_clients
 		   (id, client_id, client_name, secret_hash, client_secret_enc, client_secret_nonce, client_secret_dek_version,
 		    app_id, public, token_endpoint_auth_method, redirect_uris, post_logout_redirect_uris,
-		    grant_types, response_types, allowed_scopes, allowed_app_keys, skip_consent, pkce_required, active)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,true,true)`,
+		    grant_types, response_types, allowed_scopes, allowed_app_keys, audience, skip_consent, pkce_required, active)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
 		id, clientID, p.ClientName, nullStr(secretHash), secretEnc, secretNonce, dekVer,
 		p.AppID, p.Public, authMethod, c.RedirectURIs, c.PostLogoutRedirectURIs,
-		c.GrantTypes, c.ResponseTypes, c.AllowedScopes, c.AllowedAppKeys, p.SkipConsent)
+		c.GrantTypes, c.ResponseTypes, c.AllowedScopes, c.AllowedAppKeys, c.Audience, p.SkipConsent, c.PKCERequired, c.Active)
 	if err != nil {
 		return nil, "", err
 	}
@@ -163,13 +168,14 @@ func (s *ClientService) Create(ctx context.Context, db store.DBTX, p CreateParam
 func (s *ClientService) Update(ctx context.Context, db store.DBTX, clientID string, p CreateParams) error {
 	ct, err := db.Exec(ctx,
 		`UPDATE oauth_clients SET client_name=$2, redirect_uris=$3, post_logout_redirect_uris=$4,
-		    grant_types=$5, response_types=$6, allowed_scopes=$7, allowed_app_keys=$8, skip_consent=$9, app_id=$10
+		    grant_types=$5, response_types=$6, allowed_scopes=$7, allowed_app_keys=$8, audience=$9,
+		    skip_consent=$10, pkce_required=$11, active=$12, app_id=$13
 		  WHERE client_id=$1`,
 		clientID, p.ClientName, orEmpty(p.RedirectURIs), orEmpty(p.PostLogoutRedirectURIs),
 		defaultIfEmpty(p.GrantTypes, []string{"authorization_code", "refresh_token"}),
 		defaultIfEmpty(p.ResponseTypes, []string{"code"}),
 		defaultIfEmpty(p.AllowedScopes, []string{"openid", "profile", "email"}),
-		orEmpty(p.AllowedAppKeys), p.SkipConsent, p.AppID)
+		orEmpty(p.AllowedAppKeys), orEmpty(p.Audience), p.SkipConsent, p.PKCERequired, p.Active, p.AppID)
 	if err != nil {
 		return err
 	}

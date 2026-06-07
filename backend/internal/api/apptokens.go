@@ -109,6 +109,65 @@ func (h *Handlers) createAPIToken(w http.ResponseWriter, r *http.Request) error 
 	return nil
 }
 
+type updateTokenReq struct {
+	Name           string   `json:"name"`
+	Scopes         []string `json:"scopes"`
+	AllowedAppKeys []string `json:"allowed_app_keys"`
+	ExpiresInDays  int      `json:"expires_in_days"` // 0 = never expire
+}
+
+// updateAPIToken edits a token's non-secret config (name, scopes, app allowlist,
+// expiry). The secret and prefix are immutable; scope/allowlist changes take
+// effect immediately on the next token use.
+func (h *Handlers) updateAPIToken(w http.ResponseWriter, r *http.Request) error {
+	id, err := pathUUID(r, "id")
+	if err != nil {
+		return err
+	}
+	var req updateTokenReq
+	if err := httpx.DecodeJSON(r, &req); err != nil {
+		return err
+	}
+	if req.Name == "" {
+		return httpx.ErrBadRequest.WithDetail("名称必填")
+	}
+	ctx := r.Context()
+	// An empty allowed_app_keys means "all applications" — only a super-admin may
+	// hold such a broad token (least privilege, mirrors createAPIToken).
+	if len(req.AllowedAppKeys) == 0 {
+		super, err := h.isSuperAdmin(ctx, actorID(r))
+		if err != nil {
+			return err
+		}
+		if !super {
+			return httpx.ErrBadRequest.WithDetail("请指定该令牌可访问的应用 key(仅超级管理员可创建不限应用的令牌)")
+		}
+	}
+	var expires *time.Time
+	if req.ExpiresInDays > 0 {
+		t := time.Now().AddDate(0, 0, req.ExpiresInDays)
+		expires = &t
+	}
+	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		ct, err := tx.Exec(ctx,
+			`UPDATE api_tokens SET name=$2, scopes=$3, allowed_app_keys=$4, expires_at=$5
+			   WHERE id=$1 AND revoked_at IS NULL`,
+			id, req.Name, orEmpty(req.Scopes), orEmpty(req.AllowedAppKeys), expires)
+		if err != nil {
+			return err
+		}
+		if ct.RowsAffected() == 0 {
+			return httpx.ErrNotFound.WithDetail("令牌不存在或已吊销")
+		}
+		return h.Audit.Write(ctx, tx, audit.Event{Action: "iam.apptoken.update", TargetType: "api_token", TargetID: id.String(), TargetLabel: req.Name})
+	})
+	if err != nil {
+		return err
+	}
+	httpx.NoContent(w)
+	return nil
+}
+
 func (h *Handlers) revokeAPIToken(w http.ResponseWriter, r *http.Request) error {
 	id, err := pathUUID(r, "id")
 	if err != nil {

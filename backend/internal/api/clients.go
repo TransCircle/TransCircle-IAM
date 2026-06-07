@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -22,6 +23,19 @@ func (h *Handlers) listClients(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+func (h *Handlers) getClient(w http.ResponseWriter, r *http.Request) error {
+	clientID := chi.URLParam(r, "clientID")
+	c, err := h.Clients.Get(r.Context(), h.Store.Pool, clientID)
+	if errors.Is(err, oauth.ErrNotFound) {
+		return httpx.ErrNotFound.WithDetail("客户端不存在")
+	}
+	if err != nil {
+		return err
+	}
+	httpx.JSON(w, r, http.StatusOK, map[string]any{"client": c})
+	return nil
+}
+
 type clientReq struct {
 	ClientName             string     `json:"client_name"`
 	AppID                  *uuid.UUID `json:"app_id"`
@@ -32,15 +46,23 @@ type clientReq struct {
 	ResponseTypes          []string   `json:"response_types"`
 	AllowedScopes          []string   `json:"allowed_scopes"`
 	AllowedAppKeys         []string   `json:"allowed_app_keys"`
+	Audience               []string   `json:"audience"`
 	SkipConsent            bool       `json:"skip_consent"`
+	// Pointers so an omitted field defaults to true at creation (the secure
+	// default) while an explicit false on edit is honoured.
+	PKCERequired *bool `json:"pkce_required"`
+	Active       *bool `json:"active"`
 }
+
+func boolOrTrue(v *bool) bool { return v == nil || *v }
 
 func (cr clientReq) toParams() oauth.CreateParams {
 	return oauth.CreateParams{
 		ClientName: cr.ClientName, AppID: cr.AppID, Public: cr.Public,
 		RedirectURIs: cr.RedirectURIs, PostLogoutRedirectURIs: cr.PostLogoutRedirectURIs,
 		GrantTypes: cr.GrantTypes, ResponseTypes: cr.ResponseTypes, AllowedScopes: cr.AllowedScopes,
-		AllowedAppKeys: cr.AllowedAppKeys, SkipConsent: cr.SkipConsent,
+		AllowedAppKeys: cr.AllowedAppKeys, Audience: cr.Audience, SkipConsent: cr.SkipConsent,
+		PKCERequired: boolOrTrue(cr.PKCERequired), Active: boolOrTrue(cr.Active),
 	}
 }
 

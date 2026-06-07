@@ -85,6 +85,9 @@ type updateUserReq struct {
 	Email       string `json:"email"`
 	DisplayName string `json:"display_name"`
 	Status      string `json:"status"`
+	// Optional onboarding flags; nil leaves the current value unchanged.
+	ForcePasswordChange *bool `json:"force_password_change"`
+	MustEnrollMFA       *bool `json:"must_enroll_mfa"`
 }
 
 func (h *Handlers) updateUser(w http.ResponseWriter, r *http.Request) error {
@@ -109,6 +112,11 @@ func (h *Handlers) updateUser(w http.ResponseWriter, r *http.Request) error {
 	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if err := h.Repo.UpdateUserProfile(ctx, tx, id, req.Email, req.DisplayName, req.Status); err != nil {
 			return err
+		}
+		if req.ForcePasswordChange != nil || req.MustEnrollMFA != nil {
+			if err := h.Repo.SetUserOnboardingFlags(ctx, tx, id, req.ForcePasswordChange, req.MustEnrollMFA); err != nil {
+				return err
+			}
 		}
 		// Disabling a user revokes their sessions immediately.
 		if req.Status == "disabled" {
