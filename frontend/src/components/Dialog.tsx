@@ -11,6 +11,7 @@ export function Dialog({
   children,
   footer,
   className,
+  onSubmit,
 }: {
   open: boolean;
   onClose: () => void;
@@ -19,6 +20,9 @@ export function Dialog({
   children?: React.ReactNode;
   footer?: React.ReactNode;
   className?: string;
+  // When provided, the body + footer are wrapped in a <form>, so pressing Enter
+  // in any field submits (footer's primary button must be type="submit").
+  onSubmit?: () => void;
 }) {
   const [render, setRender] = React.useState(open);
   const [show, setShow] = React.useState(false);
@@ -74,8 +78,30 @@ export function Dialog({
         </button>
         <h2 className="pr-6 text-lg font-semibold tracking-tight">{title}</h2>
         {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
-        <div className="mt-4">{children}</div>
-        {footer && <div className="mt-6 flex justify-end gap-2">{footer}</div>}
+        {onSubmit ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              onSubmit();
+            }}
+          >
+            <div className="mt-4">{children}</div>
+            {footer && (
+              <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end [&>button]:w-full sm:[&>button]:w-auto">
+                {footer}
+              </div>
+            )}
+          </form>
+        ) : (
+          <>
+            <div className="mt-4">{children}</div>
+            {footer && (
+              <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end [&>button]:w-full sm:[&>button]:w-auto">
+                {footer}
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

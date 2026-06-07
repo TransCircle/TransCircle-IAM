@@ -1,5 +1,6 @@
 import * as React from "react";
 import { EmptyState, Spinner } from "./ui";
+import { cn } from "@/lib/utils";
 
 export interface Column<T> {
   header: string;
@@ -13,12 +14,16 @@ export function DataTable<T>({
   loading,
   empty = "暂无数据",
   rowKey,
+  onRowClick,
 }: {
   columns: Column<T>[];
   rows: T[] | undefined;
   loading?: boolean;
   empty?: string;
   rowKey: (row: T) => string;
+  // When provided, rows become clickable (e.g. to open a detail page). Action
+  // buttons inside a row should call e.stopPropagation() to avoid triggering it.
+  onRowClick?: (row: T) => void;
 }) {
   if (loading) {
     return (
@@ -31,8 +36,8 @@ export function DataTable<T>({
     return <EmptyState message={empty} />;
   }
   return (
-    <div className="overflow-hidden rounded-lg border">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto rounded-lg border">
+      <table className="tc-table w-full text-sm">
         <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
             {columns.map((c, i) => (
@@ -44,9 +49,13 @@ export function DataTable<T>({
         </thead>
         <tbody className="divide-y">
           {rows.map((row) => (
-            <tr key={rowKey(row)} className="hover:bg-muted/30">
+            <tr
+              key={rowKey(row)}
+              onClick={onRowClick ? () => onRowClick(row) : undefined}
+              className={cn("hover:bg-muted/30", onRowClick && "cursor-pointer")}
+            >
               {columns.map((c, i) => (
-                <td key={i} className={"px-4 py-3 align-middle " + (c.className || "")}>
+                <td key={i} data-label={c.header} className={"px-4 py-3 align-middle " + (c.className || "")}>
                   {c.cell(row)}
                 </td>
               ))}

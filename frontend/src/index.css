@@ -120,6 +120,31 @@ body {
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
   }
+
+  /* DataTable: collapse to stacked, labelled cards on narrow screens. */
+  @media (max-width: 640px) {
+    table.tc-table thead {
+      display: none;
+    }
+    table.tc-table tr {
+      display: block;
+      padding: 0.35rem 0;
+    }
+    table.tc-table td {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.5rem 1rem;
+      text-align: right;
+    }
+    table.tc-table td::before {
+      content: attr(data-label);
+      font-weight: 500;
+      color: hsl(var(--muted-foreground));
+      text-align: left;
+    }
+  }
 }
 
 @layer utilities {
