@@ -85,7 +85,7 @@ func (m *Manager) Create(ctx context.Context, db store.DBTX, p CreateParams) (*S
 		IdleExpiresAt:  now.Add(m.idleTTL),
 		IP:             p.IP,
 		UserAgent:      p.UserAgent,
-		AMR:            p.AMR,
+		AMR:            orEmpty(p.AMR),
 		AAL:            p.AAL,
 		MFASatisfied:   p.MFASatisfied,
 		ImpersonatorID: p.ImpersonatorID,
@@ -109,6 +109,16 @@ func (m *Manager) Create(ctx context.Context, db store.DBTX, p CreateParams) (*S
 	// Mirror is written after commit so a rolled-back session never appears.
 	store.AfterCommit(ctx, func(ctx context.Context) { m.writeMirror(ctx, s) })
 	return s, nil
+}
+
+// orEmpty coalesces a nil slice to an empty one so the NOT NULL amr text[]
+// column (explicitly listed in the INSERT, so DEFAULT '{}' is bypassed) never
+// receives a SQL NULL regardless of what a caller passes.
+func orEmpty(v []string) []string {
+	if v == nil {
+		return []string{}
+	}
+	return v
 }
 
 func mirrorKey(id uuid.UUID) string    { return "session:" + id.String() }
