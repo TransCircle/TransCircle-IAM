@@ -57,6 +57,10 @@ export function LoginPage() {
   async function submitCredentials(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (!password) {
+      setError("请输入密码");
+      return;
+    }
     setLoading(true);
     try {
       const { data } = await api.post("/api/v1/auth/login", { username, password });
