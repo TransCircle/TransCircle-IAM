@@ -3,8 +3,9 @@ import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ShieldAlert } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Checkbox, CopyButton, Field, Help, Input, PageHeader, Select, Tabs } from "@/components/ui";
-import { Dialog } from "@/components/Dialog";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Checkbox, CopyButton, Field, Help, Input, PageHeader, Select, Switch, Tabs } from "@/components/ui";
+import { Dialog, ConfirmDialog } from "@/components/Dialog";
+import { Save } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/auth/AuthProvider";
 import { ADMIN_ROLE_ID, SUPER_ADMIN_ROLE_ID, type Application, type Group, type Permission, type Role, type User } from "@/lib/types";
@@ -16,6 +17,8 @@ export function UserDetailPage() {
   const qc = useQueryClient();
   const canWrite = hasPermission("iam.users.write");
   const [resetOpen, setResetOpen] = React.useState(false);
+  const [confirmDisable, setConfirmDisable] = React.useState(false);
+  const [basic, setBasic] = React.useState({ email: "", display_name: "", force_password_change: false, must_enroll_mfa: false });
 
   const user = useQuery<User>({
     queryKey: ["user", id],
@@ -33,6 +36,17 @@ export function UserDetailPage() {
     queryKey: ["groups"],
     queryFn: async () => (await api.get("/api/v1/admin/groups")).data.groups ?? [],
   });
+
+  React.useEffect(() => {
+    if (user.data) {
+      setBasic({
+        email: user.data.email,
+        display_name: user.data.display_name,
+        force_password_change: user.data.force_password_change,
+        must_enroll_mfa: user.data.must_enroll_mfa,
+      });
+    }
+  }, [user.data]);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["assignments", id] });
   const directRoles = new Set(assignments.data?.roles ?? []);
@@ -54,7 +68,18 @@ export function UserDetailPage() {
   const toggleStatus = useMutation({
     mutationFn: (status: string) =>
       api.patch(`/api/v1/admin/users/${id}`, { email: user.data?.email ?? "", display_name: user.data?.display_name ?? "", status }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["user", id] }),
+    onSuccess: () => {
+      setConfirmDisable(false);
+      qc.invalidateQueries({ queryKey: ["user", id] });
+    },
+    onError: (e) => toast(errorMessage(e), "error"),
+  });
+  const saveBasic = useMutation({
+    mutationFn: () => api.patch(`/api/v1/admin/users/${id}`, { ...basic, status: user.data!.status }),
+    onSuccess: () => {
+      toast("已保存", "success");
+      qc.invalidateQueries({ queryKey: ["user", id] });
+    },
     onError: (e) => toast(errorMessage(e), "error"),
   });
 
@@ -83,7 +108,7 @@ export function UserDetailPage() {
                 )}
                 <Button
                   variant={user.data.status === "active" ? "destructive" : "default"}
-                  onClick={() => toggleStatus.mutate(user.data!.status === "active" ? "disabled" : "active")}
+                  onClick={() => (user.data!.status === "active" ? setConfirmDisable(true) : toggleStatus.mutate("active"))}
                 >
                   {user.data.status === "active" ? "禁用账户" : "启用账户"}
                 </Button>
@@ -101,6 +126,38 @@ export function UserDetailPage() {
       )}
 
       <div className="grid gap-6">
+        {canManage && (
+          <Card>
+            <CardHeader>
+              <CardTitle>基本信息</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Field label="用户名（不可更改）">
+                <Input value={user.data.username} disabled />
+              </Field>
+              <Field label="显示名">
+                <Input value={basic.display_name} onChange={(e) => setBasic({ ...basic, display_name: e.target.value })} />
+              </Field>
+              <Field label="邮箱">
+                <Input value={basic.email} type="email" onChange={(e) => setBasic({ ...basic, email: e.target.value })} />
+              </Field>
+              <div className="flex items-center justify-between rounded-lg border p-3 text-sm">
+                <span>首次登录强制改密</span>
+                <Switch checked={basic.force_password_change} onCheckedChange={(v) => setBasic({ ...basic, force_password_change: v })} />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border p-3 text-sm">
+                <span>要求绑定多因素认证 (MFA)</span>
+                <Switch checked={basic.must_enroll_mfa} onCheckedChange={(v) => setBasic({ ...basic, must_enroll_mfa: v })} />
+              </div>
+              <div className="flex justify-end">
+                <Button onClick={() => saveBasic.mutate()} loading={saveBasic.isPending}>
+                  <Save className="h-4 w-4" /> 保存
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardHeader>
             <CardTitle>身份组成员</CardTitle>
@@ -142,6 +199,17 @@ export function UserDetailPage() {
       </div>
 
       <ResetPasswordDialog open={resetOpen} onClose={() => setResetOpen(false)} userId={id} username={user.data.username} />
+
+      <ConfirmDialog
+        open={confirmDisable}
+        onClose={() => setConfirmDisable(false)}
+        onConfirm={() => toggleStatus.mutate("disabled")}
+        title={`禁用「${user.data.username}」?`}
+        description="该用户将立即被登出并无法再登录,直到重新启用。"
+        confirmLabel="禁用"
+        destructive
+        loading={toggleStatus.isPending}
+      />
     </div>
   );
 }
@@ -189,10 +257,11 @@ function ResetPasswordDialog({ open, onClose, userId, username }: { open: boolea
       open={open}
       onClose={onClose}
       title={`重置「${username}」的密码`}
+      onSubmit={() => reset.mutate()}
       footer={
         <>
-          <Button variant="outline" onClick={onClose}>取消</Button>
-          <Button variant="destructive" onClick={() => reset.mutate()} loading={reset.isPending}>确认重置</Button>
+          <Button variant="outline" type="button" onClick={onClose}>取消</Button>
+          <Button variant="destructive" type="submit" loading={reset.isPending}>确认重置</Button>
         </>
       }
     >

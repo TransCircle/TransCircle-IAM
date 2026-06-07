@@ -108,6 +108,7 @@ function CreateUserDialog({
   onSubmit: (b: { username: string; email: string; display_name: string }) => void;
   loading: boolean;
 }) {
+  const { toast } = useToast();
   const [username, setUsername] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [displayName, setDisplayName] = React.useState("");
@@ -118,27 +119,35 @@ function CreateUserDialog({
       setDisplayName("");
     }
   }, [open]);
+  function submit() {
+    if (!username.trim()) {
+      toast("用户名不能为空", "error");
+      return;
+    }
+    onSubmit({ username: username.trim(), email, display_name: displayName });
+  }
   return (
     <Dialog
       open={open}
       onClose={onClose}
       title="新建用户"
+      onSubmit={submit}
       footer={
         <>
-          <Button variant="outline" onClick={onClose}>取消</Button>
-          <Button onClick={() => onSubmit({ username, email, display_name: displayName })} loading={loading}>创建</Button>
+          <Button variant="outline" type="button" onClick={onClose}>取消</Button>
+          <Button type="submit" loading={loading}>创建</Button>
         </>
       }
     >
       <div className="space-y-4">
         <Field label="用户名">
-          <Input value={username} onChange={(e) => setUsername(e.target.value)} />
+          <Input value={username} autoFocus autoComplete="off" onChange={(e) => setUsername(e.target.value)} />
         </Field>
         <Field label="显示名">
           <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
         </Field>
         <Field label="邮箱">
-          <Input value={email} onChange={(e) => setEmail(e.target.value)} />
+          <Input value={email} type="email" autoComplete="off" onChange={(e) => setEmail(e.target.value)} />
         </Field>
       </div>
     </Dialog>

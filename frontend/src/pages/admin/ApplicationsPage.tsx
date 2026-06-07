@@ -33,6 +33,13 @@ export function ApplicationsPage() {
     },
     onError: (e) => toast(errorMessage(e), "error"),
   });
+  function submitCreate() {
+    if (!form.key.trim() || !form.display_name.trim()) {
+      toast("标识与名称必填", "error");
+      return;
+    }
+    create.mutate();
+  }
   const del = useMutation({
     mutationFn: (id: string) => api.delete(`/api/v1/admin/applications/${id}`),
     onSuccess: () => {
@@ -76,11 +83,11 @@ export function ApplicationsPage() {
         ]}
       />
 
-      <Dialog open={open} onClose={() => setOpen(false)} title="新建应用"
-        footer={<><Button variant="outline" onClick={() => setOpen(false)}>取消</Button><Button onClick={() => create.mutate()} loading={create.isPending}>创建</Button></>}>
+      <Dialog open={open} onClose={() => setOpen(false)} title="新建应用" onSubmit={submitCreate}
+        footer={<><Button variant="outline" type="button" onClick={() => setOpen(false)}>取消</Button><Button type="submit" loading={create.isPending}>创建</Button></>}>
         <div className="space-y-4">
           <Field label="标识 (key)" hint="唯一英文标识，如 wiki、grafana" help="创建后作为 OIDC 客户端绑定与权限查询 API 的应用标识，建议用小写字母/数字。">
-            <Input value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} />
+            <Input value={form.key} autoFocus onChange={(e) => setForm({ ...form, key: e.target.value })} />
           </Field>
           <Field label="名称"><Input value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} /></Field>
           <Field label="描述"><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>

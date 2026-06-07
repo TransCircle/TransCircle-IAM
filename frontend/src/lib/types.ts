@@ -83,14 +83,20 @@ export interface OAuthClient {
   client_name: string;
   app_id: string | null;
   public: boolean;
+  token_endpoint_auth_method: string;
   redirect_uris: string[];
   post_logout_redirect_uris: string[];
   grant_types: string[];
+  response_types: string[];
   allowed_scopes: string[];
   allowed_app_keys: string[];
+  audience: string[];
+  pkce_required: boolean;
   skip_consent: boolean;
   active: boolean;
   has_secret: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Session {

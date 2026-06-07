@@ -1,6 +1,7 @@
 import * as React from "react";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, RefreshCw } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
 import { Badge, Button, Checkbox, CopyButton, Field, Input, PageHeader, Select, Switch, Textarea } from "@/components/ui";
 import { DataTable } from "@/components/DataTable";
@@ -15,6 +16,7 @@ export function ClientsPage() {
   const { hasPermission } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const canWrite = hasPermission("iam.clients.write");
   const [open, setOpen] = React.useState(false);
   const [secret, setSecret] = React.useState<{ id: string; secret: string } | null>(null);
@@ -37,39 +39,30 @@ export function ClientsPage() {
     },
     onError: (e) => toast(errorMessage(e), "error"),
   });
-  const rotate = useMutation({
-    mutationFn: (cid: string) => api.post(`/api/v1/admin/clients/${cid}/rotate-secret`),
-    onSuccess: (r, cid) => setSecret({ id: cid, secret: r.data.client_secret }),
-    onError: (e) => toast(errorMessage(e), "error"),
-  });
 
   return (
     <div>
       <PageHeader
         title="OIDC 客户端"
-        description="接入应用通过 OAuth2/OIDC 登录并读取用户权限。"
+        description="接入应用通过 OAuth2/OIDC 登录并读取用户权限。点击任一客户端进入详情可编辑全部配置。"
         action={canWrite && <Button onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> 新建客户端</Button>}
       />
       <DataTable<OAuthClient>
         loading={clients.isLoading}
         rows={clients.data}
         rowKey={(c) => c.id}
+        onRowClick={(c) => navigate(`/admin/clients/${c.client_id}`)}
         columns={[
           { header: "名称", cell: (c) => <span className="font-medium">{c.client_name}</span> },
           { header: "Client ID", cell: (c) => <code className="text-xs">{c.client_id}</code> },
           { header: "类型", cell: (c) => (c.public ? <Badge variant="muted">公共</Badge> : <Badge>机密</Badge>) },
-          { header: "免同意", cell: (c) => (c.skip_consent ? "是" : "否") },
+          { header: "状态", cell: (c) => (c.active ? <Badge variant="success">启用</Badge> : <Badge variant="muted">停用</Badge>) },
           {
             header: "",
             className: "text-right",
             cell: (c) =>
               canWrite && (
-                <div className="flex justify-end gap-1">
-                  {!c.public && (
-                    <Button size="icon" variant="ghost" title="轮换密钥" onClick={() => rotate.mutate(c.client_id)}>
-                      <RefreshCw className="h-4 w-4" />
-                    </Button>
-                  )}
+                <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                   <Button size="icon" variant="ghost" title="删除" onClick={() => setConfirm(c)}><Trash2 className="h-4 w-4" /></Button>
                 </div>
               ),
@@ -125,7 +118,7 @@ function CreateClientDialog({
   const create = useMutation({
     mutationFn: () =>
       api.post("/api/v1/admin/clients", {
-        client_name: name,
+        client_name: name.trim(),
         app_id: appId || null,
         public: pub,
         redirect_uris: redirects.split("\n").map((s) => s.trim()).filter(Boolean),
@@ -140,11 +133,19 @@ function CreateClientDialog({
     onError: (e) => toast(errorMessage(e), "error"),
   });
 
+  function submit() {
+    if (!name.trim()) {
+      toast("名称不能为空", "error");
+      return;
+    }
+    create.mutate();
+  }
+
   return (
-    <Dialog open={open} onClose={onClose} title="新建 OIDC 客户端"
-      footer={<><Button variant="outline" onClick={onClose}>取消</Button><Button onClick={() => create.mutate()} loading={create.isPending}>创建</Button></>}>
+    <Dialog open={open} onClose={onClose} title="新建 OIDC 客户端" onSubmit={submit}
+      footer={<><Button variant="outline" type="button" onClick={onClose}>取消</Button><Button type="submit" loading={create.isPending}>创建</Button></>}>
       <div className="space-y-4">
-        <Field label="名称"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
+        <Field label="名称"><Input value={name} autoFocus onChange={(e) => setName(e.target.value)} /></Field>
         <Field label="绑定应用" help="绑定后，该客户端登录的用户会在令牌/UserInfo 中携带这个应用下的角色与权限声明。">
           <Select
             value={appId}
@@ -154,7 +155,7 @@ function CreateClientDialog({
           />
         </Field>
         <Field label="回调地址（每行一个）" help="OAuth 授权完成后允许跳转回的地址，必须与应用实际回调完全一致。">
-          <Textarea value={redirects} onChange={(e) => setRedirects(e.target.value)} placeholder="https://app.example.com/callback" />
+          <Textarea value={redirects} spellCheck={false} onChange={(e) => setRedirects(e.target.value)} placeholder="https://app.example.com/callback" />
         </Field>
         <Field label="授权范围 (Scopes)" help="openid 必选；tc.permissions 用于下发该应用下用户的角色与权限。">
           <div className="flex flex-wrap gap-3">
@@ -177,6 +178,7 @@ function CreateClientDialog({
           <span>可信应用（跳过授权同意屏）</span>
           <Switch checked={skipConsent} onCheckedChange={setSkipConsent} />
         </div>
+        <p className="text-xs text-muted-foreground">创建后可在详情页编辑回调、范围、授权类型、受众、PKCE、启停等全部配置。</p>
       </div>
     </Dialog>
   );

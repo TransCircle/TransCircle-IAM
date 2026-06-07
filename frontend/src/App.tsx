@@ -14,6 +14,8 @@ import { GroupsPage } from "./pages/admin/GroupsPage";
 import { ApplicationsPage } from "./pages/admin/ApplicationsPage";
 import { ApplicationDetailPage } from "./pages/admin/ApplicationDetailPage";
 import { ClientsPage } from "./pages/admin/ClientsPage";
+import { ClientDetailPage } from "./pages/admin/ClientDetailPage";
+import { GroupDetailPage } from "./pages/admin/GroupDetailPage";
 import { AuditPage } from "./pages/admin/AuditPage";
 import { SettingsPage } from "./pages/admin/SettingsPage";
 import { ApiTokensPage } from "./pages/admin/ApiTokensPage";
@@ -66,9 +68,11 @@ export default function App() {
         <Route path="/admin/users" element={adminRoute("iam.users.read", <UsersPage />)} />
         <Route path="/admin/users/:id" element={adminRoute("iam.users.read", <UserDetailPage />)} />
         <Route path="/admin/groups" element={adminRoute("iam.groups.read", <GroupsPage />)} />
+        <Route path="/admin/groups/:id" element={adminRoute("iam.groups.read", <GroupDetailPage />)} />
         <Route path="/admin/applications" element={adminRoute("iam.applications.read", <ApplicationsPage />)} />
         <Route path="/admin/applications/:id" element={adminRoute("iam.applications.read", <ApplicationDetailPage />)} />
         <Route path="/admin/clients" element={adminRoute("iam.clients.read", <ClientsPage />)} />
+        <Route path="/admin/clients/:clientId" element={adminRoute("iam.clients.read", <ClientDetailPage />)} />
         <Route path="/admin/audit" element={adminRoute("iam.audit.read", <AuditPage />)} />
         <Route path="/admin/settings" element={adminRoute("iam.settings.read", <SettingsPage />)} />
         <Route path="/admin/api-tokens" element={adminRoute("iam.apptokens.read", <ApiTokensPage />)} />
