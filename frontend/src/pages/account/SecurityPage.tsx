@@ -5,8 +5,8 @@ import { QRCodeSVG } from "qrcode.react";
 import { api, errorMessage } from "@/lib/api";
 import { registerPasskey } from "@/lib/webauthn";
 import { useAuth } from "@/auth/AuthProvider";
-import { Button, Card, CardContent, CardHeader, CardTitle, Field, Input, PageHeader } from "@/components/ui";
-import { Dialog } from "@/components/Dialog";
+import { Button, Card, CardContent, CardHeader, CardTitle, CopyButton, Field, Input, PageHeader, PasswordInput } from "@/components/ui";
+import { Dialog, ConfirmDialog } from "@/components/Dialog";
 import { useToast } from "@/components/Toast";
 import { formatDate } from "@/lib/utils";
 
@@ -23,6 +23,9 @@ export function SecurityPage() {
   const qc = useQueryClient();
   const [totpOpen, setTotpOpen] = React.useState(false);
   const [recovery, setRecovery] = React.useState<string[] | null>(null);
+  const [confirmRemoveTotp, setConfirmRemoveTotp] = React.useState(false);
+  const [confirmRegen, setConfirmRegen] = React.useState(false);
+  const [delTarget, setDelTarget] = React.useState<Passkey | null>(null);
 
   const passkeys = useQuery<Passkey[]>({
     queryKey: ["passkeys"],
@@ -42,17 +45,31 @@ export function SecurityPage() {
   const delPasskey = useMutation({
     mutationFn: (id: string) => api.delete(`/api/v1/account/passkeys/${id}`),
     onSuccess: () => {
+      setDelTarget(null);
       qc.invalidateQueries({ queryKey: ["passkeys"] });
       refresh();
     },
+    onError: (e) => toast(errorMessage(e), "error"),
+  });
+
+  const removeTotp = useMutation({
+    mutationFn: () => api.delete("/api/v1/account/totp"),
+    onSuccess: () => {
+      setConfirmRemoveTotp(false);
+      toast("已移除 TOTP", "success");
+      refresh();
+    },
+    onError: (e) => toast(errorMessage(e), "error"),
   });
 
   const regenRecovery = useMutation({
     mutationFn: async () => (await api.post("/api/v1/auth/recovery/generate")).data.codes as string[],
     onSuccess: (codes) => {
+      setConfirmRegen(false);
       setRecovery(codes);
       refresh();
     },
+    onError: (e) => toast(errorMessage(e), "error"),
   });
 
   return (
@@ -78,7 +95,7 @@ export function SecurityPage() {
                     添加于 {formatDate(pk.created_at)} · 最近使用 {formatDate(pk.last_used_at)}
                   </div>
                 </div>
-                <Button size="icon" variant="ghost" onClick={() => delPasskey.mutate(pk.id)}>
+                <Button size="icon" variant="ghost" onClick={() => setDelTarget(pk)}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
@@ -90,15 +107,7 @@ export function SecurityPage() {
           <CardHeader className="flex-row items-center justify-between">
             <CardTitle>动态口令 (TOTP)</CardTitle>
             {me?.mfa.totp ? (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={async () => {
-                  await api.delete("/api/v1/account/totp");
-                  toast("已移除 TOTP", "success");
-                  refresh();
-                }}
-              >
+              <Button size="sm" variant="outline" onClick={() => setConfirmRemoveTotp(true)}>
                 移除
               </Button>
             ) : (
@@ -115,16 +124,19 @@ export function SecurityPage() {
         <Card>
           <CardHeader className="flex-row items-center justify-between">
             <CardTitle>恢复码</CardTitle>
-            <Button size="sm" variant="outline" onClick={() => regenRecovery.mutate()} loading={regenRecovery.isPending}>
+            <Button size="sm" variant="outline" onClick={() => setConfirmRegen(true)} loading={regenRecovery.isPending}>
               重新生成
             </Button>
           </CardHeader>
           <CardContent>
             {recovery ? (
-              <div className="grid grid-cols-2 gap-2 rounded-md border bg-muted/40 p-3 font-mono text-sm">
-                {recovery.map((c) => (
-                  <span key={c}>{c}</span>
-                ))}
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2 rounded-md border bg-muted/40 p-3 font-mono text-sm">
+                  {recovery.map((c) => (
+                    <span key={c}>{c}</span>
+                  ))}
+                </div>
+                <CopyButton value={recovery.join("\n")} label="复制全部恢复码" />
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">剩余 {me?.mfa.recovery_codes ?? 0} 个未使用恢复码。重新生成将作废旧码。</p>
@@ -134,6 +146,36 @@ export function SecurityPage() {
       </div>
 
       <TOTPDialog open={totpOpen} onClose={() => setTotpOpen(false)} onDone={() => { setTotpOpen(false); refresh(); }} />
+
+      <ConfirmDialog
+        open={!!delTarget}
+        onClose={() => setDelTarget(null)}
+        onConfirm={() => delTarget && delPasskey.mutate(delTarget.id)}
+        title={`删除通行密钥「${delTarget?.name}」?`}
+        description="删除后将无法再用此通行密钥登录。"
+        confirmLabel="删除"
+        destructive
+        loading={delPasskey.isPending}
+      />
+      <ConfirmDialog
+        open={confirmRemoveTotp}
+        onClose={() => setConfirmRemoveTotp(false)}
+        onConfirm={() => removeTotp.mutate()}
+        title="移除 TOTP?"
+        description="移除后你将只能使用通行密钥或恢复码完成多因素验证。"
+        confirmLabel="移除"
+        destructive
+        loading={removeTotp.isPending}
+      />
+      <ConfirmDialog
+        open={confirmRegen}
+        onClose={() => setConfirmRegen(false)}
+        onConfirm={() => regenRecovery.mutate()}
+        title="重新生成恢复码?"
+        description="重新生成后,现有的所有恢复码将立即作废。"
+        confirmLabel="重新生成"
+        loading={regenRecovery.isPending}
+      />
     </div>
   );
 }
@@ -168,7 +210,7 @@ function TOTPDialog({ open, onClose, onDone }: { open: boolean; onClose: () => v
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title="绑定 TOTP" footer={<Button onClick={confirm} loading={loading}>确认</Button>}>
+    <Dialog open={open} onClose={onClose} title="绑定 TOTP" onSubmit={confirm} footer={<Button type="submit" loading={loading}>确认</Button>}>
       <div className="space-y-3">
         {otpauth && (
           <div className="flex justify-center rounded-md border bg-white p-4">
@@ -176,7 +218,7 @@ function TOTPDialog({ open, onClose, onDone }: { open: boolean; onClose: () => v
           </div>
         )}
         <Field label="验证码">
-          <Input value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" />
+          <Input value={code} autoFocus onChange={(e) => setCode(e.target.value)} inputMode="numeric" />
         </Field>
       </div>
     </Dialog>
@@ -215,13 +257,13 @@ function ChangePasswordCard() {
       <CardContent>
         <form onSubmit={submit} className="grid max-w-md gap-4">
           <Field label="当前密码">
-            <Input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" />
+            <PasswordInput value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" />
           </Field>
           <Field label="新密码" hint="至少 12 个字符">
-            <Input type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" />
+            <PasswordInput value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" />
           </Field>
           <Field label="确认新密码">
-            <Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" />
+            <PasswordInput value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" />
           </Field>
           <div>
             <Button type="submit" loading={change.isPending}>

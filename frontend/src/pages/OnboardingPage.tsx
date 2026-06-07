@@ -5,7 +5,7 @@ import { Fingerprint } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
 import { registerPasskey } from "@/lib/webauthn";
 import { useAuth } from "@/auth/AuthProvider";
-import { Button, Card, CardContent, CardHeader, CardTitle, Field, Input } from "@/components/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, CopyButton, Field, Input, PasswordInput } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 
 export function OnboardingPage() {
@@ -64,13 +64,13 @@ function ChangePasswordStep({ onDone, toast }: { onDone: () => void; toast: (m: 
     <form onSubmit={submit} className="space-y-4">
       <h3 className="font-medium">第一步：修改初始密码</h3>
       <Field label="当前（临时）密码">
-        <Input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} />
+        <PasswordInput value={current} autoFocus autoComplete="current-password" onChange={(e) => setCurrent(e.target.value)} />
       </Field>
       <Field label="新密码" hint="至少 12 个字符">
-        <Input type="password" value={next} onChange={(e) => setNext(e.target.value)} />
+        <PasswordInput value={next} autoComplete="new-password" onChange={(e) => setNext(e.target.value)} />
       </Field>
       <Field label="确认新密码">
-        <Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+        <PasswordInput value={confirm} autoComplete="new-password" onChange={(e) => setConfirm(e.target.value)} />
       </Field>
       <Button type="submit" className="w-full" loading={loading}>
         修改密码
@@ -138,6 +138,7 @@ function EnrollMFAStep({ onDone, toast }: { onDone: () => void; toast: (m: strin
             <span key={c}>{c}</span>
           ))}
         </div>
+        <CopyButton value={recovery.join("\n")} label="复制全部恢复码" />
         <Button className="w-full" onClick={onDone}>
           我已保存，完成
         </Button>

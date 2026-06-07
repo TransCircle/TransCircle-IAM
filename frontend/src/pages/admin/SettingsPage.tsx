@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, errorMessage } from "@/lib/api";
-import { Button, Card, CardContent, CardHeader, CardTitle, Field, Input, PageHeader, Select } from "@/components/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, Field, Input, PageHeader, Select, Textarea } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/auth/AuthProvider";
 
@@ -47,7 +47,8 @@ export function SettingsPage() {
           <CardTitle>WebAuthn (Passkey) 配置</CardTitle>
           <p className="text-sm text-muted-foreground">修改 RP ID 会使现有通行密钥失效，请谨慎操作。修改后即时生效。</p>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent>
+          <form onSubmit={(e) => { e.preventDefault(); save.mutate(); }} className="space-y-4">
           <Field label="RP ID" hint="通常是 IAM 的域名，如 iam.transcircle.internal">
             <Input value={form.rp_id} onChange={(e) => setForm({ ...form, rp_id: e.target.value })} disabled={!canWrite} />
           </Field>
@@ -55,9 +56,9 @@ export function SettingsPage() {
             <Input value={form.rp_display_name} onChange={(e) => setForm({ ...form, rp_display_name: e.target.value })} disabled={!canWrite} />
           </Field>
           <Field label="允许的来源 (Origins，每行一个)">
-            <textarea
-              className="flex min-h-[72px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            <Textarea
               value={form.origins.join("\n")}
+              spellCheck={false}
               onChange={(e) => setForm({ ...form, origins: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) })}
               disabled={!canWrite}
             />
@@ -89,8 +90,9 @@ export function SettingsPage() {
             </Field>
           </div>
           {canWrite && (
-            <Button onClick={() => save.mutate()} loading={save.isPending}>保存</Button>
+            <Button type="submit" loading={save.isPending}>保存</Button>
           )}
+          </form>
         </CardContent>
       </Card>
     </div>
