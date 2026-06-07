@@ -61,6 +61,7 @@ func buildDeps(ctx context.Context, rt *runtime, log *slog.Logger) (server.Deps,
 		MFA:      authn.MFA{},
 		Audit:    auditWriter,
 		Authz:    authzSvc,
+		Guard:    guard,
 		Repo:     repo,
 	}
 

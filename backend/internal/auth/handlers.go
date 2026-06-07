@@ -39,6 +39,7 @@ type Handlers struct {
 	MFA      authn.MFA
 	Audit    *audit.Writer
 	Authz    *authz.Service
+	Guard    *authz.Guard
 	Repo     rbac.Repo
 }
 

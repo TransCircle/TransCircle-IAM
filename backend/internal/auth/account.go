@@ -35,8 +35,11 @@ func (h *Handlers) MountAccount(r chi.Router) {
 		r.Method("DELETE", "/api/v1/account/sessions/{id}", httpx.Handler(h.handleRevokeMySession))
 		r.Method("POST", "/api/v1/account/sessions/revoke-others", httpx.Handler(h.handleRevokeOtherSessions))
 		r.Method("GET", "/api/v1/account/passkeys", httpx.Handler(h.handleListPasskeys))
-		r.Method("DELETE", "/api/v1/account/passkeys/{id}", httpx.Handler(h.handleDeletePasskey))
-		r.Method("DELETE", "/api/v1/account/totp", httpx.Handler(h.handleRemoveTOTP))
+		// Removing an MFA factor is sensitive: require a fresh step-up so a stolen
+		// session cannot strip the account's second factors. (Enrollment/onboarding
+		// only adds factors and is not affected.)
+		r.With(h.Guard.RequireStepUp()).Method("DELETE", "/api/v1/account/passkeys/{id}", httpx.Handler(h.handleDeletePasskey))
+		r.With(h.Guard.RequireStepUp()).Method("DELETE", "/api/v1/account/totp", httpx.Handler(h.handleRemoveTOTP))
 	})
 }
 
