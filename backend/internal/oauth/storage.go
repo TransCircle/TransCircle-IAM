@@ -236,6 +236,11 @@ func (s *storage) CreateRefreshTokenSession(ctx context.Context, signature strin
 			userID = &id
 		}
 	}
+	// user_id is a NOT NULL FK; a refresh token without a resolvable user subject
+	// must never persist a lineage row (would trip 23502). Fail closed instead.
+	if userID == nil {
+		return errors.New("oauth: refresh token session missing a valid user subject")
+	}
 	if _, err := s.st.Pool.Exec(ctx,
 		`INSERT INTO oauth_refresh_chains (jti, family_id, user_id, client_id)
 		 VALUES ($1, $2, $3, $4) ON CONFLICT (jti) DO NOTHING`,
