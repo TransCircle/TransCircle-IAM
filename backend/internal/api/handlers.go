@@ -129,7 +129,7 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.Method("GET", "/api/v1/admin/api-tokens", h.guard(authz.PermAPITokensRead, h.listAPITokens))
 		r.Method("POST", "/api/v1/admin/api-tokens", h.guardStepUp(authz.PermAPITokensWrite, h.createAPIToken))
 		r.Method("PATCH", "/api/v1/admin/api-tokens/{id}", h.guardStepUp(authz.PermAPITokensWrite, h.updateAPIToken))
-		r.Method("DELETE", "/api/v1/admin/api-tokens/{id}", h.guard(authz.PermAPITokensDelete, h.revokeAPIToken))
+		r.Method("DELETE", "/api/v1/admin/api-tokens/{id}", h.guardStepUp(authz.PermAPITokensDelete, h.revokeAPIToken))
 
 		// Dashboard stats
 		r.Method("GET", "/api/v1/admin/stats", h.guard(authz.PermUsersRead, h.dashboardStats))

@@ -2,9 +2,11 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/transcircle/iam/internal/audit"
@@ -17,6 +19,11 @@ import (
 func (h *Handlers) listUserSessions(w http.ResponseWriter, r *http.Request) error {
 	id, err := pathUUID(r, "id")
 	if err != nil {
+		return err
+	}
+	ctx := r.Context()
+	// A plain admin must not inspect another admin/super-admin's sessions.
+	if err := h.assertCanManageUser(ctx, actorID(r), id); err != nil {
 		return err
 	}
 	list, err := h.Sessions.ListForUser(r.Context(), id)
@@ -33,6 +40,20 @@ func (h *Handlers) revokeSession(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	ctx := r.Context()
+	// Resolve the session owner and enforce the manage-user relationship so a
+	// plain admin cannot revoke another admin/super-admin's session.
+	var owner uuid.UUID
+	err = h.Store.Pool.QueryRow(ctx, `SELECT user_id FROM sessions WHERE id=$1`, sid).Scan(&owner)
+	if errors.Is(err, pgx.ErrNoRows) {
+		httpx.NoContent(w) // nothing to revoke (idempotent)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err := h.assertCanManageUser(ctx, actorID(r), owner); err != nil {
+		return err
+	}
 	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if err := h.Sessions.Revoke(ctx, tx, sid); err != nil {
 			return err
@@ -221,14 +242,24 @@ func (h *Handlers) listKeys(w http.ResponseWriter, r *http.Request) error {
 
 func (h *Handlers) rotateSigningKey(w http.ResponseWriter, r *http.Request) error {
 	ctx := r.Context()
-	newKID, err := keys.RotateSigningKey(ctx, h.Store, h.Cfg)
+	var newKID string
+	// Rotation and its audit record commit atomically (fail-closed): if the audit
+	// write fails the rotation rolls back.
+	err := h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		kid, e := keys.RotateSigningKeyTx(ctx, tx, h.Cfg)
+		if e != nil {
+			return e
+		}
+		newKID = kid
+		return h.Audit.Write(ctx, tx, audit.Event{Action: "iam.security.rotate_key", TargetType: "signing_key", TargetID: kid})
+	})
 	if err != nil {
 		return err
 	}
+	// Reload published keys only after the rotation has committed.
 	if err := h.Keys.Reload(ctx, h.Store, h.Cfg); err != nil {
 		return err
 	}
-	h.Audit.Log(ctx, audit.Event{Action: "iam.security.rotate_key", TargetType: "signing_key", TargetID: newKID})
 	httpx.JSON(w, r, http.StatusOK, map[string]string{"new_kid": newKID})
 	return nil
 }

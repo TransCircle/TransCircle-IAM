@@ -121,30 +121,43 @@ func insertSigningKey(ctx context.Context, tx store.DBTX, dek []byte, dekVersion
 	return nil
 }
 
-// RotateSigningKey demotes the current active key to 'previous' and creates a new
-// active key. Previous keys remain published in JWKS until retired (must-fix #7).
+// RotateSigningKeyTx performs the rotation inside a caller-supplied transaction
+// and returns the new active key's kid, so callers can write an audit record in
+// the SAME transaction (audit fail-closed with rotation). Demotes the current
+// active key to 'previous' and creates a new active key; previous keys remain in
+// JWKS until retired (must-fix #7).
+func RotateSigningKeyTx(ctx context.Context, tx pgx.Tx, cfg *config.Config) (newKID string, err error) {
+	dek, dekVer, derr := EnsureDEK(ctx, tx, cfg)
+	if derr != nil {
+		return "", derr
+	}
+	// Retire keys older than 'previous'; demote current active -> previous.
+	if _, derr = tx.Exec(ctx,
+		`UPDATE signing_keys SET status='retired', retired_at=now() WHERE status='previous'`); derr != nil {
+		return "", derr
+	}
+	if _, derr = tx.Exec(ctx,
+		`UPDATE signing_keys SET status='previous' WHERE status='active'`); derr != nil {
+		return "", derr
+	}
+	if derr = insertSigningKey(ctx, tx, dek, dekVer, "active"); derr != nil {
+		return "", derr
+	}
+	if derr = tx.QueryRow(ctx, `SELECT kid FROM signing_keys WHERE status='active'`).Scan(&newKID); derr != nil {
+		return "", derr
+	}
+	return newKID, nil
+}
+
+// RotateSigningKey runs RotateSigningKeyTx in its own transaction (used by callers
+// that do not need to bundle other work atomically).
 func RotateSigningKey(ctx context.Context, st *store.Store, cfg *config.Config) (newKID string, err error) {
 	err = st.WithTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		dek, dekVer, derr := EnsureDEK(ctx, tx, cfg)
-		if derr != nil {
-			return derr
-		}
-		// Retire keys older than 'previous'; demote current active -> previous.
-		if _, derr = tx.Exec(ctx,
-			`UPDATE signing_keys SET status='retired', retired_at=now() WHERE status='previous'`); derr != nil {
-			return derr
-		}
-		if _, derr = tx.Exec(ctx,
-			`UPDATE signing_keys SET status='previous' WHERE status='active'`); derr != nil {
-			return derr
-		}
-		return insertSigningKey(ctx, tx, dek, dekVer, "active")
+		kid, e := RotateSigningKeyTx(ctx, tx, cfg)
+		newKID = kid
+		return e
 	})
 	if err != nil {
-		return "", err
-	}
-	if err := st.Pool.QueryRow(ctx,
-		`SELECT kid FROM signing_keys WHERE status='active'`).Scan(&newKID); err != nil {
 		return "", err
 	}
 	return newKID, nil
