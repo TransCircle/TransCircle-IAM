@@ -127,7 +127,7 @@ func (p *Provider) handleConsentApprove(w http.ResponseWriter, r *http.Request) 
 			 VALUES ($1,$2,$3,$4,$5)
 			 ON CONFLICT (user_id, client_id) DO UPDATE
 			   SET granted_scopes=EXCLUDED.granted_scopes, mapping_version=EXCLUDED.mapping_version`,
-			crypto.NewUUIDv7(), principal.UserID, req.ClientID, req.Scopes, current)
+			crypto.NewUUIDv7(), principal.UserID, req.ClientID, orEmpty(req.Scopes), current)
 		if err != nil {
 			return err
 		}
