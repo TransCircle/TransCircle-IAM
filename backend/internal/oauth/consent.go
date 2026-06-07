@@ -2,10 +2,11 @@ package oauth
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
@@ -30,37 +31,59 @@ func (p *Provider) currentMappingVersion(ctx context.Context) (int64, error) {
 	return v, err
 }
 
-// consentSatisfied reports whether consent can be skipped (trusted client) or a
-// current grant already covers the requested scopes (must-fix #9: a grant is
-// stale once the scope→permission mapping version advances).
-func (p *Provider) consentSatisfied(ctx context.Context, userID interface{ String() string }, client *Client, scopes []string) (bool, error) {
-	if client.SkipConsent {
-		return true, nil
-	}
-	var granted []string
-	var mappingVersion int64
-	err := p.store.Pool.QueryRow(ctx,
-		`SELECT granted_scopes, mapping_version FROM oauth_consent_grants WHERE user_id=$1 AND client_id=$2`,
-		userID.String(), client.ClientID).Scan(&granted, &mappingVersion)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
-	}
+// consentTicket is a one-time, short-lived proof that the user just approved a
+// specific client + scope set on the consent page. For a non-trusted client it
+// is the ONLY thing that lets an authorization proceed, and it is consumed on
+// use — so every authorization re-prompts, even when the same client was
+// approved moments ago. Persistent grants intentionally do NOT skip the prompt.
+type consentTicket struct {
+	UserID   string   `json:"user_id"`
+	ClientID string   `json:"client_id"`
+	Scopes   []string `json:"scopes"`
+}
+
+const consentTicketTTL = 5 * time.Minute
+
+func consentTicketKey(token string) string { return "oauth:consent:once:" + token }
+
+// mintConsentTicket stores a single-use ticket and returns its opaque token.
+func (p *Provider) mintConsentTicket(ctx context.Context, userID, clientID string, scopes []string) (string, error) {
+	token := crypto.RandomToken(24)
+	raw, err := json.Marshal(consentTicket{UserID: userID, ClientID: clientID, Scopes: orEmpty(scopes)})
 	if err != nil {
-		return false, err
+		return "", err
 	}
-	current, err := p.currentMappingVersion(ctx)
+	if err := p.store.Redis.Set(ctx, consentTicketKey(token), raw, consentTicketTTL).Err(); err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
+// consumeConsentTicket atomically redeems a one-time consent ticket (GetDel). It
+// returns true only when the ticket exists, belongs to this user + client, and
+// covers every requested scope. Any miss (absent, expired, mismatched, or a
+// Redis error) returns false, which fails safe by re-prompting for consent.
+func (p *Provider) consumeConsentTicket(ctx context.Context, token, userID, clientID string, scopes []string) bool {
+	if token == "" {
+		return false
+	}
+	raw, err := p.store.Redis.GetDel(ctx, consentTicketKey(token)).Bytes()
 	if err != nil {
-		return false, err
+		return false
 	}
-	if mappingVersion < current {
-		return false, nil
+	var t consentTicket
+	if err := json.Unmarshal(raw, &t); err != nil {
+		return false
+	}
+	if t.UserID != userID || t.ClientID != clientID {
+		return false
 	}
 	for _, sc := range scopes {
-		if !slices.Contains(granted, sc) {
-			return false, nil
+		if !slices.Contains(t.Scopes, sc) {
+			return false
 		}
 	}
-	return true, nil
+	return true
 }
 
 type consentScope struct {
@@ -121,6 +144,9 @@ func (p *Provider) handleConsentApprove(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		return err
 	}
+	// Record the consent decision (history of the user's latest approval per
+	// client). This row is a record only — it does NOT gate future prompts; the
+	// one-time ticket minted below is what actually authorizes this single flow.
 	err = p.store.WithTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx,
 			`INSERT INTO oauth_consent_grants (id, user_id, client_id, granted_scopes, mapping_version)
@@ -139,7 +165,12 @@ func (p *Provider) handleConsentApprove(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		return err
 	}
-	httpx.JSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
+	// Mint the single-use ticket that lets exactly this authorization proceed.
+	token, err := p.mintConsentTicket(ctx, principal.UserID.String(), req.ClientID, req.Scopes)
+	if err != nil {
+		return err
+	}
+	httpx.JSON(w, r, http.StatusOK, map[string]string{"status": "ok", "consent_token": token})
 	return nil
 }
 

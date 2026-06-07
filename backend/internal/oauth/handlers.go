@@ -87,14 +87,17 @@ func (p *Provider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	}
 	scopes := []string(ar.GetRequestedScopes())
 
-	satisfied, err := p.consentSatisfied(ctx, user.ID, client, scopes)
-	if err != nil {
-		httpx.Error(w, r, err)
-		return
-	}
-	if !satisfied {
-		p.redirectToConsent(w, r, client, scopes)
-		return
+	// Trusted clients skip the prompt entirely. Every other client must be
+	// re-approved on each authorization: the consent page mints a one-time
+	// ticket when the user approves, which is consumed here for exactly this
+	// request. A fresh authorization carries no ticket, so it always prompts
+	// again — consent is never silently remembered.
+	if !client.SkipConsent {
+		token := r.URL.Query().Get("consent_token")
+		if !p.consumeConsentTicket(ctx, token, user.ID.String(), client.ClientID, scopes) {
+			p.redirectToConsent(w, r, client, scopes)
+			return
+		}
 	}
 	p.finishAuthorize(w, r, ar, client)
 }
