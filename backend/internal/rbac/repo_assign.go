@@ -77,6 +77,27 @@ func (Repo) UserGroups(ctx context.Context, db store.DBTX, userID uuid.UUID) ([]
 	return queryUUIDs(ctx, db, `SELECT group_id FROM group_members WHERE user_id=$1`, userID)
 }
 
+// UserGroupKeys lists the identity-group keys a user belongs to (global, not
+// app-scoped), for OIDC claims and the machine permissions API.
+func (Repo) UserGroupKeys(ctx context.Context, db store.DBTX, userID uuid.UUID) ([]string, error) {
+	rows, err := db.Query(ctx,
+		`SELECT g.key FROM group_members gm JOIN groups g ON g.id = gm.group_id
+		  WHERE gm.user_id=$1 ORDER BY g.key`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, err
+		}
+		out = append(out, k)
+	}
+	return out, rows.Err()
+}
+
 // GroupMemberIDs lists user ids in a group.
 func (Repo) GroupMemberIDs(ctx context.Context, db store.DBTX, groupID uuid.UUID) ([]uuid.UUID, error) {
 	return queryUUIDs(ctx, db, `SELECT user_id FROM group_members WHERE group_id=$1`, groupID)

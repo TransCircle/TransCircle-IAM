@@ -111,6 +111,10 @@ func (s *Service) AppPermissions(ctx context.Context, userID, appID uuid.UUID, a
 	if err != nil {
 		return rbac.AppPermissions{}, err
 	}
+	groups, err := s.repo.UserGroupKeys(ctx, s.st.Pool, userID)
+	if err != nil {
+		return rbac.AppPermissions{}, err
+	}
 	perms := cp.Apps[appKey]
 	if perms == nil {
 		perms = []string{}
@@ -118,7 +122,7 @@ func (s *Service) AppPermissions(ctx context.Context, userID, appID uuid.UUID, a
 	if roles == nil {
 		roles = []string{}
 	}
-	return rbac.AppPermissions{AppID: appID, AppKey: appKey, Roles: roles, Permissions: perms}, nil
+	return rbac.AppPermissions{AppID: appID, AppKey: appKey, Roles: roles, Permissions: perms, Groups: groups}, nil
 }
 
 // SystemPermissionSet returns the user's full system-app permission set (for /me).

@@ -20,6 +20,7 @@ type appClaims struct {
 	Roles       []string `json:"tc_roles"`
 	PermVersion string   `json:"tc_perm_version"`
 	Permissions []string `json:"-"` // full set delivered via userinfo / REST, not the ID token
+	Groups      []string `json:"-"` // identity-group keys delivered via userinfo / REST
 }
 
 // computeAppClaims resolves the requesting client's app context for the user.
@@ -46,6 +47,7 @@ func (p *Provider) computeAppClaims(ctx context.Context, userID, clientID string
 		Roles:       ap.Roles,
 		PermVersion: permHash(ap.Permissions),
 		Permissions: ap.Permissions,
+		Groups:      ap.Groups,
 	}, nil
 }
 

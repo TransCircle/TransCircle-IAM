@@ -92,10 +92,12 @@ type EffectivePermission struct {
 }
 
 // AppPermissions groups a user's effective roles + permissions for one application,
-// shaped for the OIDC claims / permissions API.
+// shaped for the OIDC claims / permissions API. Groups is the user's global
+// identity-group membership (not app-scoped) included for integrator convenience.
 type AppPermissions struct {
 	AppID       uuid.UUID `json:"app_id"`
 	AppKey      string    `json:"app_key"`
 	Roles       []string  `json:"roles"`
 	Permissions []string  `json:"permissions"`
+	Groups      []string  `json:"groups"`
 }
