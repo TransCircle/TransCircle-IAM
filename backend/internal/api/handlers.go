@@ -149,6 +149,16 @@ func (h *Handlers) tx(ctx context.Context, fn func(ctx context.Context, tx pgx.T
 	return h.Store.WithTx(ctx, fn)
 }
 
+// orEmpty coalesces a nil slice to an empty one so NOT NULL text[] columns are
+// never sent a SQL NULL (pgx encodes a nil slice as NULL; an explicitly-listed
+// column bypasses the table's DEFAULT '{}').
+func orEmpty(v []string) []string {
+	if v == nil {
+		return []string{}
+	}
+	return v
+}
+
 func queryInt(r *http.Request, key string, def int) int {
 	if v := r.URL.Query().Get(key); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {

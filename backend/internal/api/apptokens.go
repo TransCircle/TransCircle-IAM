@@ -96,7 +96,7 @@ func (h *Handlers) createAPIToken(w http.ResponseWriter, r *http.Request) error 
 		_, err := tx.Exec(ctx,
 			`INSERT INTO api_tokens (id, name, token_hash, prefix, scopes, allowed_app_keys, created_by, expires_at)
 			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-			id, req.Name, hash, prefix, req.Scopes, req.AllowedAppKeys, by, expires)
+			id, req.Name, hash, prefix, orEmpty(req.Scopes), orEmpty(req.AllowedAppKeys), by, expires)
 		if err != nil {
 			return err
 		}
