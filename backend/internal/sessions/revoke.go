@@ -87,7 +87,7 @@ func (m *Manager) ListForUser(ctx context.Context, userID uuid.UUID) ([]Session,
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Session
+	out := []Session{}
 	for rows.Next() {
 		var s Session
 		var ip *string

@@ -55,7 +55,7 @@ func (Repo) EffectivePermissions(ctx context.Context, db store.DBTX, userID uuid
 		return nil, err
 	}
 	defer rows.Close()
-	var out []EffectivePermission
+	out := []EffectivePermission{}
 	for rows.Next() {
 		var ep EffectivePermission
 		if err := rows.Scan(&ep.AppID, &ep.AppKey, &ep.PermKey); err != nil {
@@ -82,7 +82,7 @@ WHERE r.application_id = $2 AND r.id IN (
 		return nil, err
 	}
 	defer rows.Close()
-	var out []string
+	out := []string{}
 	for rows.Next() {
 		var k string
 		if err := rows.Scan(&k); err != nil {
@@ -235,7 +235,7 @@ func (Repo) ListUsers(ctx context.Context, db store.DBTX, search string, limit, 
 		return nil, 0, err
 	}
 	defer rows.Close()
-	var out []User
+	out := []User{}
 	for rows.Next() {
 		u, err := scanUser(rows)
 		if err != nil {

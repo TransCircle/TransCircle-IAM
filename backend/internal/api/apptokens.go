@@ -35,7 +35,7 @@ func (h *Handlers) listAPITokens(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	defer rows.Close()
-	var out []apiTokenInfo
+	out := []apiTokenInfo{}
 	for rows.Next() {
 		var t apiTokenInfo
 		if err := rows.Scan(&t.ID, &t.Name, &t.Prefix, &t.Scopes, &t.AllowedAppKeys, &t.ExpiresAt, &t.RevokedAt, &t.LastUsedAt, &t.CreatedAt); err != nil {

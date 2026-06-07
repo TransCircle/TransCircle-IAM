@@ -40,7 +40,7 @@ func (Repo) ListApplications(ctx context.Context, db store.DBTX) ([]Application,
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Application
+	out := []Application{}
 	for rows.Next() {
 		a, err := scanApp(rows)
 		if err != nil {
@@ -107,7 +107,7 @@ func (Repo) ListPermissions(ctx context.Context, db store.DBTX, appID uuid.UUID)
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Permission
+	out := []Permission{}
 	for rows.Next() {
 		p, err := scanPerm(rows)
 		if err != nil {
@@ -173,7 +173,7 @@ func (Repo) ListRoles(ctx context.Context, db store.DBTX, appID uuid.UUID) ([]Ro
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Role
+	out := []Role{}
 	for rows.Next() {
 		r, err := scanRole(rows)
 		if err != nil {
@@ -214,7 +214,7 @@ func (Repo) RolePermissionIDs(ctx context.Context, db store.DBTX, roleID uuid.UU
 		return nil, err
 	}
 	defer rows.Close()
-	var out []uuid.UUID
+	out := []uuid.UUID{}
 	for rows.Next() {
 		var id uuid.UUID
 		if err := rows.Scan(&id); err != nil {
@@ -288,7 +288,7 @@ func (Repo) ListGroups(ctx context.Context, db store.DBTX) ([]Group, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Group
+	out := []Group{}
 	for rows.Next() {
 		g, err := scanGroup(rows)
 		if err != nil {

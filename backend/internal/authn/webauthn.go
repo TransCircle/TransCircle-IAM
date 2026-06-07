@@ -249,7 +249,7 @@ func (s *WebAuthnService) ListCredentials(ctx context.Context, userID uuid.UUID)
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Credential
+	out := []Credential{}
 	for rows.Next() {
 		var c Credential
 		if err := rows.Scan(&c.ID, &c.Name, &c.CreatedAt, &c.LastUsedAt); err != nil {

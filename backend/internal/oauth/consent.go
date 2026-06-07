@@ -103,7 +103,7 @@ func (p *Provider) handleConsentInfo(w http.ResponseWriter, r *http.Request) err
 		return httpx.ErrNotFound.WithDetail("应用不存在")
 	}
 	requested := splitScopes(r.URL.Query().Get("scope"))
-	var out []consentScope
+	out := []consentScope{}
 	for _, sc := range requested {
 		var cs consentScope
 		cs.Name = sc

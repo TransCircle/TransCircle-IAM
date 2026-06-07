@@ -84,7 +84,7 @@ func (s *ClientService) List(ctx context.Context) ([]Client, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Client
+	out := []Client{}
 	for rows.Next() {
 		c, err := scanClient(rows)
 		if err != nil {

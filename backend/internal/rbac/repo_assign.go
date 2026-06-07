@@ -114,7 +114,7 @@ func queryUUIDs(ctx context.Context, db store.DBTX, q string, args ...any) ([]uu
 		return nil, err
 	}
 	defer rows.Close()
-	var out []uuid.UUID
+	out := []uuid.UUID{}
 	for rows.Next() {
 		var id uuid.UUID
 		if err := rows.Scan(&id); err != nil {

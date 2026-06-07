@@ -226,7 +226,7 @@ func (h *Handlers) listKeys(w http.ResponseWriter, r *http.Request) error {
 		CreatedAt   time.Time  `json:"created_at"`
 		ActivatedAt *time.Time `json:"activated_at"`
 	}
-	var out []keyInfo
+	out := []keyInfo{}
 	for rows.Next() {
 		var k keyInfo
 		if err := rows.Scan(&k.KID, &k.Algorithm, &k.Status, &k.CreatedAt, &k.ActivatedAt); err != nil {

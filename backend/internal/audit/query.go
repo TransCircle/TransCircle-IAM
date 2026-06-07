@@ -58,7 +58,7 @@ LIMIT $6 OFFSET $7`
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Entry
+	out := []Entry{}
 	for rows.Next() {
 		var e Entry
 		var ip *string
