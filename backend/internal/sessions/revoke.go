@@ -24,7 +24,10 @@ func (m *Manager) Revoke(ctx context.Context, db store.DBTX, id uuid.UUID) error
 	if err != nil {
 		return err // a real DB error must not be reported as a successful revoke
 	}
-	m.tombstone(ctx, id, expiresAt)
+	// Tombstone only after the surrounding transaction commits, so a rolled-back
+	// revoke (e.g. a failed audit write in the same tx) never force-logs-out a
+	// still-valid session. All callers run inside Store.WithTx.
+	store.AfterCommit(ctx, func(ctx context.Context) { m.tombstone(ctx, id, expiresAt) })
 	return nil
 }
 
