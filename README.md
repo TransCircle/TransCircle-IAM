@@ -12,7 +12,7 @@
 
 - 管理员手动建号 → **首登强制改密 + 强制绑定 MFA**（Passkey / TOTP + 一次性恢复码）。
 - **混合 RBAC**：用户 / 身份组 / 角色 / 权限 / 应用，权限按应用作用域划分；用户可经身份组、直接角色、或单条权限三路径授权。
-- 作为 **OAuth2/OIDC 供应商**：`authorization_code`+PKCE、`refresh_token`（轮换+重用检测）、`client_credentials`；ID Token/UserInfo 下发应用权限声明（`tc_app`/`tc_roles`/`tc_perm_version`），完整权限经 UserInfo 与受保护 REST API 获取。
+- 作为 **OAuth2/OIDC 供应商**：`authorization_code`+PKCE、`refresh_token`（轮换+重用检测）、`client_credentials`；ID Token/Access Token 下发精简权限声明（`tc_app`/`tc_roles`/`tc_perm_version`），完整权限表与身份组列表（`tc_permissions`/`tc_groups`）经 UserInfo 与受保护 REST API 获取。
 - 密钥**初始化自动生成并入库**（零配置），AES-256-GCM 静态加密，可选 KEK 加固。
 - 内置：审计日志、会话远程吊销、Consent 同意屏、M2M API 令牌、管理员代登（防越权）。
 - 后端**完全无状态**，可 `--scale backend=N` 横向扩展。
@@ -67,12 +67,14 @@ server {
    - 发现文档：`/.well-known/openid-configuration`
    - 授权端点：`/oauth2/auth`（强制 PKCE，S256）
    - 令牌端点：`/oauth2/token`
-   - UserInfo：`/oauth2/userinfo`（返回 `tc_app` / `tc_roles` / `tc_permissions`）
-4. 后端服务也可用 **API 令牌** 直接查询权限：
+   - UserInfo：`/oauth2/userinfo`（返回 `tc_app` / `tc_roles` / `tc_permissions` / `tc_groups`）
+4. 后端服务也可用 **API 令牌** 直接查询权限（返回 `roles` / `permissions` / `groups`）：
    ```
    GET /api/v1/permissions?user=<用户名|uuid>&app=<应用key>
    Authorization: Bearer tcp_xxx
    ```
+
+> 完整、分步、含示例的接入手册见 [`docs/INTEGRATION.md`](docs/INTEGRATION.md)，或登录后访问管理台内的「对接文档」页面（同源内容）。
 
 ## 本地开发
 
