@@ -48,6 +48,14 @@ func (h *Handlers) handlePermissionsAPI(w http.ResponseWriter, r *http.Request) 
 		}
 		userID = u.ID
 	}
+	// Never hand out permissions for a disabled or deleted user (fail-closed).
+	user, err := h.Repo.GetUser(ctx, h.Store.Pool, userID)
+	if err != nil {
+		return httpx.ErrNotFound.WithDetail("用户不存在")
+	}
+	if !user.IsActive || user.Status != "active" {
+		return httpx.ErrForbidden.WithDetail("用户已停用")
+	}
 
 	// Resolve the application id from its key.
 	apps, err := h.Repo.ListApplications(ctx, h.Store.Pool)
