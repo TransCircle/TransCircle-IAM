@@ -1,20 +1,20 @@
 import * as React from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Fingerprint, ShieldCheck, KeyRound, Lock, Users } from "lucide-react";
+import { Fingerprint, ShieldCheck, KeyRound, Lock, Users, ArrowLeft } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
 import { safeReturnPath } from "@/lib/utils";
 import { loginPasskey } from "@/lib/webauthn";
 import { useAuth } from "@/auth/AuthProvider";
-import { Button, Field, Input } from "@/components/ui";
+import { Button, Field, Input, PasswordInput } from "@/components/ui";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
-type Stage = "credentials" | "mfa";
+type Stage = "username" | "password" | "mfa";
 
 export function LoginPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const { refresh } = useAuth();
-  const [stage, setStage] = React.useState<Stage>("credentials");
+  const [stage, setStage] = React.useState<Stage>("username");
   const [username, setUsername] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [ticket, setTicket] = React.useState("");
@@ -35,6 +35,25 @@ export function LoginPage() {
     else navigate("/account");
   }
 
+  // Step 1: advance from username to password (no request yet) — pressing Enter
+  // on the username field moves forward instead of attempting a login.
+  function submitUsername(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    if (!username.trim()) {
+      setError("请输入用户名");
+      return;
+    }
+    setStage("password");
+  }
+
+  function backToUsername() {
+    setError("");
+    setPassword("");
+    setStage("username");
+  }
+
+  // Step 2: submit credentials.
   async function submitCredentials(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -82,6 +101,14 @@ export function LoginPage() {
     }
   }
 
+  const heading = stage === "mfa" ? "安全验证" : "登录账户";
+  const subheading =
+    stage === "username"
+      ? "输入用户名以继续"
+      : stage === "password"
+        ? "输入密码完成登录"
+        : "请完成多因素验证";
+
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       {/* Brand panel */}
@@ -126,21 +153,39 @@ export function LoginPage() {
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl brand-gradient text-white shadow-lg shadow-primary/30 lg:hidden">
               <KeyRound className="h-6 w-6" />
             </div>
-            <h2 className="text-2xl font-bold tracking-tight">{stage === "credentials" ? "登录账户" : "安全验证"}</h2>
-            <p className="text-sm text-muted-foreground">
-              {stage === "credentials" ? "输入用户名与密码以继续" : "请完成多因素验证"}
-            </p>
+            <h2 className="text-2xl font-bold tracking-tight">{heading}</h2>
+            <p className="text-sm text-muted-foreground">{subheading}</p>
           </div>
 
           {error && <div className="mb-4 rounded-lg bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>}
 
-          {stage === "credentials" && (
-            <form onSubmit={submitCredentials} className="space-y-4">
+          {stage === "username" && (
+            <form onSubmit={submitUsername} className="space-y-4">
               <Field label="用户名">
                 <Input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus autoComplete="username" />
               </Field>
+              <Button type="submit" className="w-full" size="lg">
+                下一步
+              </Button>
+            </form>
+          )}
+
+          {stage === "password" && (
+            <form onSubmit={submitCredentials} className="space-y-4">
+              <button
+                type="button"
+                onClick={backToUsername}
+                className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <ArrowLeft className="h-4 w-4" /> {username}
+              </button>
               <Field label="密码">
-                <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+                <PasswordInput
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoFocus
+                  autoComplete="current-password"
+                />
               </Field>
               <Button type="submit" className="w-full" size="lg" loading={loading}>
                 登录
