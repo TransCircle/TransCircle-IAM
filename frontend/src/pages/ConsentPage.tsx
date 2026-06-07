@@ -30,10 +30,18 @@ export function ConsentPage() {
   async function decide(approve: boolean) {
     setLoading(true);
     try {
-      await api.post("/api/v1/oauth/consent", { client_id: clientID, scopes: scope.split(" ").filter(Boolean), approve });
+      const resp = await api.post<{ consent_token?: string }>("/api/v1/oauth/consent", {
+        client_id: clientID,
+        scopes: scope.split(" ").filter(Boolean),
+        approve,
+      });
       const safe = safeReturnPath(ret);
       if (approve && safe) {
-        window.location.href = safe;
+        // Carry the one-time consent ticket back to the authorize endpoint so it
+        // completes exactly this request (a fresh authorization re-prompts).
+        const token = resp.data?.consent_token;
+        const sep = safe.includes("?") ? "&" : "?";
+        window.location.href = token ? `${safe}${sep}consent_token=${encodeURIComponent(token)}` : safe;
       } else {
         window.location.href = "/account";
       }
