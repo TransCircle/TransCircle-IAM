@@ -166,7 +166,9 @@ export function ApiDocsPage() {
 
             <EndpointDoc method="POST" path="/oauth2/revoke" auth="客户端凭据">
               <p>
-                <b className="text-foreground">令牌吊销（RFC 7009）。</b>主动作废一个 access_token 或 refresh_token（例如用户登出时）。吊销后该令牌立即失效。
+                <b className="text-foreground">令牌吊销（RFC 7009）。</b>主动作废 <b>refresh token</b>（立即失效,并连带其令牌族)。
+                注意:<b>access token 是自包含 JWT,不做中心化即时吊销</b>——最多在其较短有效期(TTL)后失效;
+                需要即时收敛时,资源服务可用 <code>/oauth2/introspect</code> 核实,或借助 <code>tc_perm_version</code> 做权限版本校验。
               </p>
             </EndpointDoc>
 

@@ -88,7 +88,7 @@
 
 #### `POST /oauth2/revoke` — 令牌吊销 RFC 7009（客户端凭据）
 
-主动作废一个 access_token 或 refresh_token（如用户登出），吊销后立即失效。
+主动作废 **refresh token**（立即失效,并连带其令牌族）。注意:**access token 是自包含 JWT,不做中心化即时吊销**——最多在其较短有效期(TTL,默认 ≤15 分钟)后自然失效;若资源服务需要即时收敛,请用 `/oauth2/introspect` 核实,或借助 `tc_perm_version` 做权限版本校验。
 
 #### `GET /api/v1/permissions` — 机器权限 API（Bearer `tcp_` 令牌）
 
