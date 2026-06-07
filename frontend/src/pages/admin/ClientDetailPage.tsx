@@ -268,8 +268,8 @@ export function ClientDetailPage() {
               <Switch checked={form.active} disabled={!canWrite} onCheckedChange={(v) => set("active", v)} />
             </div>
             <div className="flex items-center justify-between rounded-lg border p-3 text-sm">
-              <span>强制 PKCE (S256)</span>
-              <Switch checked={form.pkce_required} disabled={!canWrite} onCheckedChange={(v) => set("pkce_required", v)} />
+              <span>强制 PKCE (S256)<span className="ml-2 text-xs text-muted-foreground">全局强制,始终开启</span></span>
+              <Switch checked disabled onCheckedChange={() => {}} />
             </div>
             <div className="flex items-center justify-between rounded-lg border p-3 text-sm">
               <span>可信应用（跳过授权同意屏）</span>
