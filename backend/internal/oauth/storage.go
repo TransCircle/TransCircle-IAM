@@ -189,6 +189,17 @@ func (s *storage) GetAuthorizeCodeSession(ctx context.Context, code string, sess
 	if !sr.Active {
 		return req, fosite.ErrInvalidatedAuthorizeCode
 	}
+	// Single-use: atomically claim the code (SET NX) so two concurrent token
+	// requests can never both consume the same authorization code. fosite calls
+	// this once per exchange; a reused/raced code returns the requester plus
+	// ErrInvalidatedAuthorizeCode so fosite revokes any tokens already minted.
+	ok, serr := s.st.Redis.SetNX(ctx, "oauth:code:used:"+code, "1", s.cfg.codeTTL).Result()
+	if serr != nil {
+		return nil, serr
+	}
+	if !ok {
+		return req, fosite.ErrInvalidatedAuthorizeCode
+	}
 	return req, nil
 }
 
@@ -282,11 +293,20 @@ func (s *storage) DeleteRefreshTokenSession(ctx context.Context, signature strin
 }
 
 func (s *storage) RotateRefreshToken(ctx context.Context, requestID string, refreshTokenSignature string) error {
-	// Mark the rotated token revoked so any later reuse triggers family revoke.
-	_, err := s.st.Pool.Exec(ctx,
-		`UPDATE oauth_refresh_chains SET revoked=true, used_at=now() WHERE jti=$1`, refreshTokenSignature)
+	// Atomically claim the rotation: the conditional UPDATE only affects a row
+	// whose revoked flag is still false, so exactly one of two concurrent refresh
+	// exchanges wins. The loser updates zero rows and is rejected, so a single
+	// refresh token can never be exchanged twice. A genuine later reuse (the token
+	// presented after it was rotated) is still caught in GetRefreshTokenSession,
+	// which revokes the whole family. We deliberately do NOT family-revoke here, so
+	// a benign concurrent double-submit can't nuke the winner's fresh token.
+	ct, err := s.st.Pool.Exec(ctx,
+		`UPDATE oauth_refresh_chains SET revoked=true, used_at=now() WHERE jti=$1 AND revoked=false`, refreshTokenSignature)
 	if err != nil {
 		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return fosite.ErrInactiveToken
 	}
 	return s.st.Redis.Del(ctx, "oauth:rt:"+refreshTokenSignature).Err()
 }
