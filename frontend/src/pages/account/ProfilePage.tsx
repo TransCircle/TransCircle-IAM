@@ -2,7 +2,7 @@ import * as React from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/auth/AuthProvider";
 import { api, errorMessage } from "@/lib/api";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Field, Input, PageHeader } from "@/components/ui";
+import { Avatar, Badge, Button, Card, CardContent, CardHeader, CardTitle, Field, Input, PageHeader } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 
 export function ProfilePage() {
@@ -29,6 +29,35 @@ export function ProfilePage() {
     onError: (e) => toast(errorMessage(e), "error"),
   });
 
+  const fileRef = React.useRef<HTMLInputElement>(null);
+  const uploadAvatar = useMutation({
+    mutationFn: (file: File) => {
+      const fd = new FormData();
+      fd.append("avatar", file);
+      return api.post("/api/v1/account/avatar", fd);
+    },
+    onSuccess: () => {
+      toast("头像已更新", "success");
+      refresh();
+    },
+    onError: (e) => toast(errorMessage(e), "error"),
+  });
+
+  function pickAvatar(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file
+    if (!file) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      toast("仅支持 PNG/JPEG/WebP 图片", "error");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast("头像不能超过 2MB", "error");
+      return;
+    }
+    uploadAvatar.mutate(file);
+  }
+
   if (!me) return null;
 
   return (
@@ -40,6 +69,16 @@ export function ProfilePage() {
             <CardTitle>编辑资料</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="flex items-center gap-4">
+              <Avatar src={me.user.avatar_url} name={me.user.display_name || me.user.username} size="lg" />
+              <div>
+                <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={pickAvatar} />
+                <Button variant="outline" size="sm" type="button" onClick={() => fileRef.current?.click()} loading={uploadAvatar.isPending}>
+                  更换头像
+                </Button>
+                <p className="mt-1.5 text-xs text-muted-foreground">支持 PNG/JPEG/WebP，最大 2MB。</p>
+              </div>
+            </div>
             <Field label="登录名" help="登录名由管理员创建后不可更改。">
               <Input value={me.user.username} disabled />
             </Field>

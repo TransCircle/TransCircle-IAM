@@ -7,7 +7,7 @@ import {
 import { useAuth } from "@/auth/AuthProvider";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { Button } from "./ui";
+import { Avatar, Button } from "./ui";
 import { ThemeToggle } from "./ThemeToggle";
 
 interface NavItem {
@@ -127,7 +127,6 @@ function UserMenu() {
   }
 
   const name = me?.user.display_name || me?.user.username || "";
-  const initial = name.slice(0, 1).toUpperCase();
 
   return (
     <div ref={ref} className="relative">
@@ -135,9 +134,7 @@ function UserMenu() {
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-2 rounded-full border bg-card py-1 pl-1 pr-2.5 text-sm transition-colors hover:bg-accent/50"
       >
-        <span className="flex h-7 w-7 items-center justify-center rounded-full brand-gradient text-xs font-semibold text-white">
-          {initial}
-        </span>
+        <Avatar src={me?.user.avatar_url} name={name} size="sm" />
         <span className="hidden max-w-[10rem] truncate sm:block">{name}</span>
         <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
       </button>
