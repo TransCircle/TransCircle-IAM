@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/transcircle/iam/internal/authn"
@@ -87,10 +88,12 @@ func ensureInitialized(ctx context.Context, rt *runtime) (*bootstrapOutput, erro
 			return err
 		}
 		if n > 0 {
-			// System already has users: if nobody holds super_admin anymore
-			// (the operator locked themselves out), re-grant it to the bootstrap
-			// admin so the system can always be recovered by a restart.
-			if err := healSuperAdmin(ctx, tx, repo, rt.cfg.BootstrapAdminUsername); err != nil {
+			// System already has users: unconditionally re-grant the super_admin
+			// AND admin direct roles to the bootstrap admin on every boot, so an
+			// accidental role removal or permission wipe always self-heals on a
+			// restart. (To permanently stop this, DELETE the bootstrap admin
+			// account — a disabled-but-present account still gets re-granted.)
+			if err := ensureBootstrapAdminRoles(ctx, tx, repo, rt.cfg.BootstrapAdminUsername); err != nil {
 				return err
 			}
 			return nil
@@ -114,6 +117,9 @@ func ensureInitialized(ctx context.Context, rt *runtime) (*bootstrapOutput, erro
 			return err
 		}
 		if err := repo.AddUserRole(ctx, tx, admin.ID, rbac.SuperAdminRole, admin.ID); err != nil {
+			return err
+		}
+		if err := repo.AddUserRole(ctx, tx, admin.ID, rbac.AdminRole, admin.ID); err != nil {
 			return err
 		}
 		codes, err := recovery.Generate(ctx, tx, admin.ID, 10)
@@ -154,16 +160,11 @@ func Bootstrap(ctx context.Context) error {
 	return writeBootstrapOutput(rt.cfg.BootstrapOutFile, out)
 }
 
-// healSuperAdmin re-grants the super_admin role to the bootstrap admin when no
-// active user holds it, so a lockout self-recovers on the next start.
-func healSuperAdmin(ctx context.Context, tx pgx.Tx, repo rbac.Repo, adminUsername string) error {
-	n, err := repo.CountActiveUsersWithRole(ctx, tx, rbac.SuperAdminRole)
-	if err != nil {
-		return err
-	}
-	if n > 0 {
-		return nil
-	}
+// ensureBootstrapAdminRoles re-grants the super_admin AND admin direct roles to
+// the configured bootstrap admin on every boot (idempotent), so an accidental
+// role removal or permission wipe always self-heals on restart. If the bootstrap
+// admin account has been deleted, there is nothing to recover to.
+func ensureBootstrapAdminRoles(ctx context.Context, tx pgx.Tx, repo rbac.Repo, adminUsername string) error {
 	admin, err := repo.GetUserByUsername(ctx, tx, adminUsername)
 	if errors.Is(err, rbac.ErrNotFound) {
 		return nil // no bootstrap admin to recover to
@@ -171,13 +172,15 @@ func healSuperAdmin(ctx context.Context, tx pgx.Tx, repo rbac.Repo, adminUsernam
 	if err != nil {
 		return err
 	}
-	if err := repo.AddUserRole(ctx, tx, admin.ID, rbac.SuperAdminRole, admin.ID); err != nil {
-		return err
+	for _, role := range []uuid.UUID{rbac.SuperAdminRole, rbac.AdminRole} {
+		if err := repo.AddUserRole(ctx, tx, admin.ID, role, admin.ID); err != nil {
+			return err
+		}
 	}
 	if err := repo.BumpPermVersion(ctx, tx, admin.ID); err != nil {
 		return err
 	}
-	fmt.Printf("bootstrap: 检测到无超级管理员，已将 super_admin 重新授予 %s。\n", admin.Username)
+	fmt.Printf("bootstrap: 已确保 %s 持有 super_admin 与 admin 直接角色。\n", admin.Username)
 	return nil
 }
 
