@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Fingerprint, Trash2 } from "lucide-react";
+import { Fingerprint, Pencil, Trash2 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { api, errorMessage } from "@/lib/api";
 import { registerPasskey } from "@/lib/webauthn";
@@ -26,6 +26,10 @@ export function SecurityPage() {
   const [confirmRemoveTotp, setConfirmRemoveTotp] = React.useState(false);
   const [confirmRegen, setConfirmRegen] = React.useState(false);
   const [delTarget, setDelTarget] = React.useState<Passkey | null>(null);
+  const [addOpen, setAddOpen] = React.useState(false);
+  const [newName, setNewName] = React.useState("通行密钥");
+  const [renameTarget, setRenameTarget] = React.useState<Passkey | null>(null);
+  const [renameName, setRenameName] = React.useState("");
 
   const passkeys = useQuery<Passkey[]>({
     queryKey: ["passkeys"],
@@ -33,13 +37,24 @@ export function SecurityPage() {
   });
 
   const addPasskey = useMutation({
-    mutationFn: () => registerPasskey("通行密钥"),
+    mutationFn: (name: string) => registerPasskey(name),
     onSuccess: () => {
       toast("通行密钥已添加", "success");
+      setAddOpen(false);
       qc.invalidateQueries({ queryKey: ["passkeys"] });
       refresh();
     },
     onError: (e) => toast(errorMessage(e) || "已取消", "error"),
+  });
+
+  const renamePasskey = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => api.patch(`/api/v1/account/passkeys/${id}`, { name }),
+    onSuccess: () => {
+      toast("已重命名", "success");
+      setRenameTarget(null);
+      qc.invalidateQueries({ queryKey: ["passkeys"] });
+    },
+    onError: (e) => toast(errorMessage(e), "error"),
   });
 
   const delPasskey = useMutation({
@@ -81,7 +96,14 @@ export function SecurityPage() {
         <Card>
           <CardHeader className="flex-row items-center justify-between">
             <CardTitle>通行密钥</CardTitle>
-            <Button size="sm" onClick={() => addPasskey.mutate()} loading={addPasskey.isPending}>
+            <Button
+              size="sm"
+              onClick={() => {
+                setNewName("通行密钥");
+                setAddOpen(true);
+              }}
+              loading={addPasskey.isPending}
+            >
               <Fingerprint className="h-4 w-4" /> 添加
             </Button>
           </CardHeader>
@@ -95,9 +117,22 @@ export function SecurityPage() {
                     添加于 {formatDate(pk.created_at)} · 最近使用 {formatDate(pk.last_used_at)}
                   </div>
                 </div>
-                <Button size="icon" variant="ghost" onClick={() => setDelTarget(pk)}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => {
+                      setRenameTarget(pk);
+                      setRenameName(pk.name);
+                    }}
+                    aria-label="重命名"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button size="icon" variant="ghost" onClick={() => setDelTarget(pk)} aria-label="删除">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             ))}
           </CardContent>
@@ -144,6 +179,40 @@ export function SecurityPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        title="添加通行密钥"
+        onSubmit={() => addPasskey.mutate(newName.trim() || "通行密钥")}
+        footer={
+          <>
+            <Button variant="outline" type="button" onClick={() => setAddOpen(false)}>取消</Button>
+            <Button type="submit" loading={addPasskey.isPending}>继续</Button>
+          </>
+        }
+      >
+        <Field label="名称" hint="给这个通行密钥起个好记的名字，例如「我的 iPhone」「公司笔记本」。">
+          <Input value={newName} autoFocus onChange={(e) => setNewName(e.target.value)} maxLength={64} />
+        </Field>
+      </Dialog>
+
+      <Dialog
+        open={!!renameTarget}
+        onClose={() => setRenameTarget(null)}
+        title="重命名通行密钥"
+        onSubmit={() => renameTarget && renamePasskey.mutate({ id: renameTarget.id, name: renameName.trim() || renameTarget.name })}
+        footer={
+          <>
+            <Button variant="outline" type="button" onClick={() => setRenameTarget(null)}>取消</Button>
+            <Button type="submit" loading={renamePasskey.isPending}>保存</Button>
+          </>
+        }
+      >
+        <Field label="名称">
+          <Input value={renameName} autoFocus onChange={(e) => setRenameName(e.target.value)} maxLength={64} />
+        </Field>
+      </Dialog>
 
       <TOTPDialog open={totpOpen} onClose={() => setTotpOpen(false)} onDone={() => { setTotpOpen(false); refresh(); }} />
 
