@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
-import { Badge, Button, CopyButton, Field, Input, PageHeader } from "@/components/ui";
+import { Avatar, Badge, Button, CopyButton, Field, Input, PageHeader } from "@/components/ui";
 import { DataTable } from "@/components/DataTable";
 import { Dialog } from "@/components/Dialog";
 import { useToast } from "@/components/Toast";
@@ -60,7 +60,8 @@ export function UsersPage() {
           {
             header: "用户",
             cell: (u) => (
-              <Link to={`/admin/users/${u.id}`} className="font-medium text-primary hover:underline">
+              <Link to={`/admin/users/${u.id}`} className="flex items-center gap-2.5 font-medium text-primary hover:underline">
+                <Avatar src={u.avatar_url} name={u.display_name || u.username} size="sm" />
                 {u.username}
               </Link>
             ),
@@ -70,7 +71,13 @@ export function UsersPage() {
           {
             header: "状态",
             cell: (u) =>
-              u.status === "active" ? <Badge variant="success">启用</Badge> : <Badge variant="muted">禁用</Badge>,
+              u.status === "disabled" ? (
+                <Badge variant="muted">已禁用</Badge>
+              ) : u.force_password_change ? (
+                <Badge variant="warning">待激活</Badge>
+              ) : (
+                <Badge variant="success">正常</Badge>
+              ),
           },
           { header: "创建时间", cell: (u) => formatDate(u.created_at) },
         ]}
