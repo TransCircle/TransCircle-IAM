@@ -4,6 +4,7 @@ export interface MeUser {
   display_name: string;
   email: string;
   status: string;
+  avatar_url: string;
 }
 
 export interface MFAStatus {
@@ -22,7 +23,8 @@ export interface Me {
   impersonator: { id: string; username: string } | null;
 }
 
-// Fixed built-in role IDs (mirror of backend rbac.SuperAdminRole / AdminRole).
+// Fixed built-in IDs (mirror of backend rbac.SystemAppID / SuperAdminRole / AdminRole).
+export const SYSTEM_APP_ID = "00000000-0000-0000-0000-000000000001";
 export const SUPER_ADMIN_ROLE_ID = "00000000-0000-0000-0000-000000000002";
 export const ADMIN_ROLE_ID = "00000000-0000-0000-0000-000000000003";
 
@@ -35,6 +37,7 @@ export interface User {
   is_active: boolean;
   force_password_change: boolean;
   must_enroll_mfa: boolean;
+  avatar_url: string;
   created_at: string;
   updated_at: string;
 }

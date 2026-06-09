@@ -1,4 +1,5 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { cva, type VariantProps } from "class-variance-authority";
 import { Check, ChevronDown, HelpCircle, Copy, Eye, EyeOff } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -190,6 +191,11 @@ export interface SelectOption {
   label: string;
 }
 
+// useDropdownPosition tracks a trigger element and computes a fixed-position menu
+// box (flipping above when there isn't room below). The menu is rendered in a
+// body portal so it is never clipped by an ancestor's overflow (cards, tables).
+type MenuBox = { left: number; width: number; top?: number; bottom?: number; maxH: number };
+
 export function Select({
   value,
   onValueChange,
@@ -207,14 +213,47 @@ export function Select({
 }) {
   const [open, setOpen] = React.useState(false);
   const [active, setActive] = React.useState(-1);
-  const ref = React.useRef<HTMLDivElement>(null);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
+  const menuRef = React.useRef<HTMLDivElement>(null);
   const selected = options.find((o) => o.value === value);
+  const [box, setBox] = React.useState<MenuBox | null>(null);
+
+  const reposition = React.useCallback(() => {
+    const el = triggerRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const below = window.innerHeight - r.bottom;
+    const above = r.top;
+    const flip = below < 240 && above > below;
+    setBox({
+      left: r.left,
+      width: r.width,
+      top: flip ? undefined : r.bottom + 6,
+      bottom: flip ? window.innerHeight - r.top + 6 : undefined,
+      maxH: Math.min(256, (flip ? above : below) - 16),
+    });
+  }, []);
+
+  React.useLayoutEffect(() => {
+    if (!open) return;
+    reposition();
+    const onScroll = () => reposition();
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [open, reposition]);
 
   React.useEffect(() => {
     if (!open) return;
     setActive(Math.max(0, options.findIndex((o) => o.value === value)));
+    // Close on a click outside BOTH the trigger and the (portalled) menu.
     function onDoc(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (triggerRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
     }
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
@@ -250,8 +289,9 @@ export function Select({
   }
 
   return (
-    <div ref={ref} className={cn("relative", className)}>
+    <div className={cn("relative", className)}>
       <button
+        ref={triggerRef}
         type="button"
         disabled={disabled}
         aria-haspopup="listbox"
@@ -265,29 +305,37 @@ export function Select({
         </span>
         <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
       </button>
-      {open && (
-        <div role="listbox" className="absolute z-50 mt-1.5 max-h-64 w-full animate-pop-in overflow-auto rounded-lg border bg-card p-1 shadow-lg">
-          {options.length === 0 && <div className="px-3 py-2 text-sm text-muted-foreground">无选项</div>}
-          {options.map((o, i) => (
-            <button
-              key={o.value}
-              type="button"
-              role="option"
-              aria-selected={o.value === value}
-              onMouseEnter={() => setActive(i)}
-              onClick={() => choose(o.value)}
-              className={cn(
-                "flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors",
-                i === active && "bg-accent",
-                o.value === value && "font-medium text-accent-foreground"
-              )}
-            >
-              <span className="truncate">{o.label}</span>
-              {o.value === value && <Check className="h-4 w-4 text-primary" />}
-            </button>
-          ))}
-        </div>
-      )}
+      {open && box &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="listbox"
+            style={{ position: "fixed", left: box.left, width: box.width, top: box.top, bottom: box.bottom, maxHeight: box.maxH }}
+            className="z-[70] animate-pop-in overflow-auto rounded-lg border bg-card p-1 shadow-lg"
+          >
+            {options.length === 0 && <div className="px-3 py-2 text-sm text-muted-foreground">无选项</div>}
+            {options.map((o, i) => (
+              <button
+                key={o.value}
+                ref={i === active ? (el) => el?.scrollIntoView({ block: "nearest" }) : undefined}
+                type="button"
+                role="option"
+                aria-selected={o.value === value}
+                onMouseEnter={() => setActive(i)}
+                onClick={() => choose(o.value)}
+                className={cn(
+                  "flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors",
+                  i === active && "bg-accent",
+                  o.value === value && "font-medium text-accent-foreground"
+                )}
+              >
+                <span className="truncate">{o.label}</span>
+                {o.value === value && <Check className="h-4 w-4 text-primary" />}
+              </button>
+            ))}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
@@ -320,6 +368,105 @@ export function Checkbox({
     >
       {checked && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
     </button>
+  );
+}
+
+/* ----------------------------- Avatar ----------------------------- */
+
+const avatarSizes = {
+  sm: "h-7 w-7 text-xs",
+  md: "h-10 w-10 text-sm",
+  lg: "h-16 w-16 text-xl",
+};
+
+// Avatar shows the user's uploaded image, or a brand-gradient circle with the
+// first letter of their name as a fallback (also used while an image 404s).
+export function Avatar({
+  src,
+  name,
+  size = "md",
+  className,
+}: {
+  src?: string | null;
+  name?: string;
+  size?: keyof typeof avatarSizes;
+  className?: string;
+}) {
+  const [errored, setErrored] = React.useState(false);
+  React.useEffect(() => setErrored(false), [src]);
+  const initial = (name || "").trim().slice(0, 1).toUpperCase() || "?";
+  const showImg = !!src && !errored;
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 select-none items-center justify-center overflow-hidden rounded-full brand-gradient font-semibold text-white",
+        avatarSizes[size],
+        className
+      )}
+    >
+      {showImg ? (
+        <img src={src!} alt={name || "头像"} className="h-full w-full object-cover" onError={() => setErrored(true)} />
+      ) : (
+        initial
+      )}
+    </span>
+  );
+}
+
+/* ----------------------------- CheckRow (whole-row checkmark toggle) ----------------------------- */
+
+// CheckRow is a full-width, single-click selectable row with a leading checkmark
+// box. The ENTIRE row is the click target (fixes the old <label><Checkbox/>
+// double-dispatch), and callers drive `checked` optimistically for instant feedback.
+export function CheckRow({
+  checked,
+  onToggle,
+  disabled,
+  locked,
+  lockedHint,
+  className,
+  children,
+}: {
+  checked: boolean;
+  onToggle: (next: boolean) => void;
+  disabled?: boolean;
+  locked?: boolean;
+  lockedHint?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const inert = disabled || locked;
+  return (
+    <div className={cn("relative", className)}>
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={checked}
+        disabled={inert}
+        onClick={() => onToggle(!checked)}
+        className={cn(
+          "flex w-full items-center gap-2.5 rounded-lg border p-2.5 text-left text-sm transition-colors",
+          locked && lockedHint && "pr-9",
+          inert ? "cursor-not-allowed opacity-60" : "hover:bg-accent/40",
+          checked && !inert ? "border-primary/50 bg-primary/5" : "border-input"
+        )}
+      >
+        <span
+          className={cn(
+            "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors",
+            checked ? "border-primary bg-primary text-primary-foreground" : "border-input bg-card"
+          )}
+        >
+          {checked && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+        </span>
+        <span className="flex min-w-0 flex-1 items-center gap-2">{children}</span>
+      </button>
+      {locked && lockedHint && (
+        <span className="absolute right-2.5 top-1/2 -translate-y-1/2">
+          <Help text={lockedHint} />
+        </span>
+      )}
+    </div>
   );
 }
 
