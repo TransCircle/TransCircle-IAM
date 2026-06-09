@@ -266,6 +266,18 @@ func (s *WebAuthnService) DeleteCredential(ctx context.Context, db store.DBTX, u
 	return err
 }
 
+// RenameCredential sets a passkey's display name (scoped to the owner).
+func (s *WebAuthnService) RenameCredential(ctx context.Context, db store.DBTX, userID, credID uuid.UUID, name string) error {
+	ct, err := db.Exec(ctx, `UPDATE webauthn_credentials SET name=$3 WHERE id=$1 AND user_id=$2`, credID, userID, name)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return fmt.Errorf("authn: 通行密钥不存在")
+	}
+	return nil
+}
+
 func (s *WebAuthnService) storeSession(ctx context.Context, keyFn func(string) string, session *webauthn.SessionData) (string, error) {
 	ticket := crypto.RandomToken(18)
 	raw, err := json.Marshal(session)

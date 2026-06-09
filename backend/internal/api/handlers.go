@@ -59,6 +59,7 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.Method("PATCH", "/api/v1/admin/users/{id}", h.guard(authz.PermUsersWrite, h.updateUser))
 		r.Method("DELETE", "/api/v1/admin/users/{id}", h.guardStepUp(authz.PermUsersDelete, h.deleteUser))
 		r.Method("POST", "/api/v1/admin/users/{id}/reset-password", h.guardStepUp(authz.PermUsersWrite, h.resetPassword))
+		r.Method("POST", "/api/v1/admin/users/{id}/avatar", h.guard(authz.PermUsersWrite, h.uploadUserAvatar))
 		r.Method("GET", "/api/v1/admin/users/{id}/assignments", h.guard(authz.PermUsersRead, h.getUserAssignments))
 		r.Method("POST", "/api/v1/admin/users/{id}/roles", h.guard(authz.PermUsersWrite, h.addUserRole))
 		r.Method("DELETE", "/api/v1/admin/users/{id}/roles/{roleID}", h.guard(authz.PermUsersWrite, h.removeUserRole))
@@ -95,6 +96,8 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.Method("PATCH", "/api/v1/admin/groups/{id}", h.guard(authz.PermGroupsWrite, h.updateGroup))
 		r.Method("DELETE", "/api/v1/admin/groups/{id}", h.guard(authz.PermGroupsDelete, h.deleteGroup))
 		r.Method("GET", "/api/v1/admin/groups/{id}", h.guard(authz.PermGroupsRead, h.getGroup))
+		r.Method("POST", "/api/v1/admin/groups/{id}/members", h.guard(authz.PermGroupsWrite, h.addGroupMembers))
+		r.Method("DELETE", "/api/v1/admin/groups/{id}/members/{userID}", h.guard(authz.PermGroupsWrite, h.removeGroupMember))
 		r.Method("POST", "/api/v1/admin/groups/{id}/roles", h.guard(authz.PermGroupsWrite, h.addGroupRole))
 		r.Method("DELETE", "/api/v1/admin/groups/{id}/roles/{roleID}", h.guard(authz.PermGroupsWrite, h.removeGroupRole))
 

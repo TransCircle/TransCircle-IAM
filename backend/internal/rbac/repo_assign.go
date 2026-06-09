@@ -103,6 +103,37 @@ func (Repo) GroupMemberIDs(ctx context.Context, db store.DBTX, groupID uuid.UUID
 	return queryUUIDs(ctx, db, `SELECT user_id FROM group_members WHERE group_id=$1`, groupID)
 }
 
+// GroupMemberInfo is a member summary for the group detail UI.
+type GroupMemberInfo struct {
+	ID          uuid.UUID `json:"id"`
+	Username    string    `json:"username"`
+	DisplayName string    `json:"display_name"`
+	AvatarURL   string    `json:"avatar_url"`
+}
+
+// GroupMembers lists a group's members with their display fields (for the group
+// management UI), excluding soft-deleted users.
+func (Repo) GroupMembers(ctx context.Context, db store.DBTX, groupID uuid.UUID) ([]GroupMemberInfo, error) {
+	rows, err := db.Query(ctx,
+		`SELECT u.id, u.username, u.display_name, u.avatar_url
+		   FROM group_members gm JOIN users u ON u.id = gm.user_id
+		  WHERE gm.group_id=$1 AND u.deleted_at IS NULL
+		  ORDER BY u.username`, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []GroupMemberInfo{}
+	for rows.Next() {
+		var m GroupMemberInfo
+		if err := rows.Scan(&m.ID, &m.Username, &m.DisplayName, &m.AvatarURL); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 // GroupRoleIDs lists role ids granted by a group.
 func (Repo) GroupRoleIDs(ctx context.Context, db store.DBTX, groupID uuid.UUID) ([]uuid.UUID, error) {
 	return queryUUIDs(ctx, db, `SELECT role_id FROM group_roles WHERE group_id=$1`, groupID)

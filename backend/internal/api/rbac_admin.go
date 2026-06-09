@@ -416,9 +416,86 @@ func (h *Handlers) getGroup(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return httpx.ErrNotFound
 	}
-	members, _ := h.Repo.GroupMemberIDs(ctx, h.Store.Pool, id)
-	roles, _ := h.Repo.GroupRoleIDs(ctx, h.Store.Pool, id)
-	httpx.JSON(w, r, http.StatusOK, map[string]any{"group": g, "member_ids": members, "role_ids": roles})
+	members, err := h.Repo.GroupMembers(ctx, h.Store.Pool, id)
+	if err != nil {
+		return err
+	}
+	roles, err := h.Repo.GroupRoleIDs(ctx, h.Store.Pool, id)
+	if err != nil {
+		return err
+	}
+	httpx.JSON(w, r, http.StatusOK, map[string]any{"group": g, "members": members, "role_ids": roles})
+	return nil
+}
+
+type groupMembersReq struct {
+	UserIDs []uuid.UUID `json:"user_ids"`
+}
+
+// addGroupMembers batch-adds users to a group from the group management UI.
+func (h *Handlers) addGroupMembers(w http.ResponseWriter, r *http.Request) error {
+	id, err := pathUUID(r, "id")
+	if err != nil {
+		return err
+	}
+	var req groupMembersReq
+	if err := httpx.DecodeJSON(r, &req); err != nil {
+		return err
+	}
+	if len(req.UserIDs) == 0 {
+		return httpx.ErrBadRequest.WithDetail("未选择用户")
+	}
+	ctx := r.Context()
+	if _, err := h.Repo.GetGroup(ctx, h.Store.Pool, id); err != nil {
+		return httpx.ErrNotFound
+	}
+	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		for _, uid := range req.UserIDs {
+			if err := h.Repo.AddGroupMember(ctx, tx, id, uid); err != nil {
+				return err
+			}
+			// A new member inherits the group's roles → bump their perm version.
+			if err := h.Repo.BumpPermVersion(ctx, tx, uid); err != nil {
+				return err
+			}
+		}
+		return h.Audit.Write(ctx, tx, audit.Event{Action: "iam.group.add_members", TargetType: "group", TargetID: id.String(), Metadata: map[string]any{"count": len(req.UserIDs)}})
+	})
+	if err != nil {
+		return err
+	}
+	for _, uid := range req.UserIDs {
+		h.afterPermChange(ctx, uid)
+	}
+	httpx.NoContent(w)
+	return nil
+}
+
+// removeGroupMember removes a single user from a group.
+func (h *Handlers) removeGroupMember(w http.ResponseWriter, r *http.Request) error {
+	id, err := pathUUID(r, "id")
+	if err != nil {
+		return err
+	}
+	userID, err := pathUUID(r, "userID")
+	if err != nil {
+		return err
+	}
+	ctx := r.Context()
+	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if err := h.Repo.RemoveGroupMember(ctx, tx, id, userID); err != nil {
+			return err
+		}
+		if err := h.Repo.BumpPermVersion(ctx, tx, userID); err != nil {
+			return err
+		}
+		return h.Audit.Write(ctx, tx, audit.Event{Action: "iam.group.remove_member", TargetType: "group", TargetID: id.String(), Metadata: map[string]any{"user": userID.String()}})
+	})
+	if err != nil {
+		return err
+	}
+	h.afterPermChange(ctx, userID)
+	httpx.NoContent(w)
 	return nil
 }
 

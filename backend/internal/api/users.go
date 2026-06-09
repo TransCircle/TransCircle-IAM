@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/transcircle/iam/internal/audit"
 	"github.com/transcircle/iam/internal/authn"
+	"github.com/transcircle/iam/internal/avatars"
 	"github.com/transcircle/iam/internal/crypto"
 	"github.com/transcircle/iam/internal/httpx"
 	"github.com/transcircle/iam/internal/rbac"
@@ -159,6 +161,55 @@ func (h *Handlers) deleteUser(w http.ResponseWriter, r *http.Request) error {
 	}
 	httpx.NoContent(w)
 	return nil
+}
+
+// uploadUserAvatar lets an admin set another user's avatar (multipart "avatar").
+func (h *Handlers) uploadUserAvatar(w http.ResponseWriter, r *http.Request) error {
+	id, err := pathUUID(r, "id")
+	if err != nil {
+		return err
+	}
+	ctx := r.Context()
+	if err := h.assertCanManageUser(ctx, actorID(r), id); err != nil {
+		return err
+	}
+	url, err := avatars.SaveUpload(w, r, h.Cfg.DataDir)
+	if err != nil {
+		return avatarUploadError(err)
+	}
+	var old string
+	if u, gerr := h.Repo.GetUser(ctx, h.Store.Pool, id); gerr == nil {
+		old = u.AvatarURL
+	}
+	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if serr := h.Repo.SetUserAvatar(ctx, tx, id, url); serr != nil {
+			return serr
+		}
+		return h.Audit.Write(ctx, tx, audit.Event{Action: "iam.user.avatar.update", TargetType: "user", TargetID: id.String()})
+	})
+	if err != nil {
+		avatars.Remove(h.Cfg.DataDir, url)
+		return err
+	}
+	if old != "" && old != url {
+		avatars.Remove(h.Cfg.DataDir, old)
+	}
+	httpx.JSON(w, r, http.StatusOK, map[string]string{"avatar_url": url})
+	return nil
+}
+
+// avatarUploadError maps an avatars sentinel error to an HTTP problem.
+func avatarUploadError(err error) error {
+	switch {
+	case errors.Is(err, avatars.ErrTooLarge):
+		return httpx.NewError(http.StatusRequestEntityTooLarge, "payload_too_large", "头像不能超过 2MB")
+	case errors.Is(err, avatars.ErrUnsupportedType):
+		return httpx.NewError(http.StatusUnsupportedMediaType, "unsupported_media_type", "仅支持 PNG/JPEG/WebP 图片")
+	case errors.Is(err, avatars.ErrNoFile):
+		return httpx.ErrBadRequest.WithDetail("缺少头像文件")
+	default:
+		return err
+	}
 }
 
 type resetPwdReq struct {
@@ -329,6 +380,11 @@ func (h *Handlers) mutateAssignment(w http.ResponseWriter, r *http.Request, kind
 			}
 		}
 	}
+	if kind == "permissions" {
+		if err := h.assertSystemPermLocked(ctx, userID, req.ID); err != nil {
+			return err
+		}
+	}
 	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if err := fn(ctx, tx, userID, req.ID, by); err != nil {
 			return err
@@ -368,6 +424,11 @@ func (h *Handlers) mutateAssignmentPath(w http.ResponseWriter, r *http.Request, 
 			if err := h.Guard.CheckStepUp(ctx); err != nil {
 				return err
 			}
+		}
+	}
+	if param == "permID" {
+		if err := h.assertSystemPermLocked(ctx, userID, target); err != nil {
+			return err
 		}
 	}
 	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {

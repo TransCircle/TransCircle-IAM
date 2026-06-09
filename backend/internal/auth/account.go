@@ -2,8 +2,10 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"slices"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/transcircle/iam/internal/audit"
 	"github.com/transcircle/iam/internal/authctx"
+	"github.com/transcircle/iam/internal/avatars"
 	"github.com/transcircle/iam/internal/httpx"
 	"github.com/transcircle/iam/internal/rbac"
 )
@@ -21,6 +24,9 @@ func (h *Handlers) MountAccount(r chi.Router) {
 	r.Group(func(r chi.Router) {
 		r.Use(h.RequireAuth)
 		r.Method("GET", "/api/v1/me", httpx.Handler(h.handleMe))
+		// Avatars are served here (RequireAuth but NOT behind the onboarding Gate)
+		// so a user's <img> renders even mid-onboarding.
+		r.Method("GET", "/api/v1/avatars/{file}", httpx.Handler(h.handleServeAvatar))
 		// Step-up: re-verify MFA within the session for sensitive operations.
 		r.Method("GET", "/api/v1/auth/step-up/factors", httpx.Handler(h.handleStepUpFactors))
 		r.Method("POST", "/api/v1/auth/step-up/totp", httpx.Handler(h.handleStepUpTOTP))
@@ -31,6 +37,7 @@ func (h *Handlers) MountAccount(r chi.Router) {
 		r.Use(h.RequireAuth)
 		r.Use(h.Gate)
 		r.Method("PATCH", "/api/v1/account/profile", httpx.Handler(h.handleUpdateProfile))
+		r.Method("POST", "/api/v1/account/avatar", httpx.Handler(h.handleUploadAvatar))
 		r.Method("GET", "/api/v1/account/sessions", httpx.Handler(h.handleMySessions))
 		r.Method("DELETE", "/api/v1/account/sessions/{id}", httpx.Handler(h.handleRevokeMySession))
 		r.Method("POST", "/api/v1/account/sessions/revoke-others", httpx.Handler(h.handleRevokeOtherSessions))
@@ -39,6 +46,8 @@ func (h *Handlers) MountAccount(r chi.Router) {
 		// session cannot strip the account's second factors. (Enrollment/onboarding
 		// only adds factors and is not affected.)
 		r.With(h.Guard.RequireStepUp()).Method("DELETE", "/api/v1/account/passkeys/{id}", httpx.Handler(h.handleDeletePasskey))
+		// Renaming a passkey only changes a display label, so no step-up.
+		r.Method("PATCH", "/api/v1/account/passkeys/{id}", httpx.Handler(h.handleRenamePasskey))
 		r.With(h.Guard.RequireStepUp()).Method("DELETE", "/api/v1/account/totp", httpx.Handler(h.handleRemoveTOTP))
 	})
 }
@@ -59,6 +68,7 @@ type meUser struct {
 	DisplayName string    `json:"display_name"`
 	Email       string    `json:"email"`
 	Status      string    `json:"status"`
+	AvatarURL   string    `json:"avatar_url"`
 }
 
 type meActor struct {
@@ -93,7 +103,7 @@ func (h *Handlers) handleMe(w http.ResponseWriter, r *http.Request) error {
 		roles = []string{}
 	}
 	resp := meResp{
-		User:           meUser{ID: user.ID, Username: user.Username, DisplayName: user.DisplayName, Email: user.Email, Status: user.Status},
+		User:           meUser{ID: user.ID, Username: user.Username, DisplayName: user.DisplayName, Email: user.Email, Status: user.Status, AvatarURL: user.AvatarURL},
 		RequiredAction: action,
 		MFA:            mfa,
 		Permissions:    perms,
@@ -134,6 +144,56 @@ func (h *Handlers) handleUpdateProfile(w http.ResponseWriter, r *http.Request) e
 		return err
 	}
 	httpx.JSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
+	return nil
+}
+
+// handleUploadAvatar stores a self-uploaded avatar (multipart field "avatar").
+func (h *Handlers) handleUploadAvatar(w http.ResponseWriter, r *http.Request) error {
+	p, _ := authctx.From(r.Context())
+	url, err := avatars.SaveUpload(w, r, h.Cfg.DataDir)
+	if err != nil {
+		return avatarUploadError(err)
+	}
+	var old string
+	if u, gerr := h.Repo.GetUser(r.Context(), h.Store.Pool, p.UserID); gerr == nil {
+		old = u.AvatarURL
+	}
+	err = h.Store.WithTx(r.Context(), func(ctx context.Context, tx pgx.Tx) error {
+		if serr := h.Repo.SetUserAvatar(ctx, tx, p.UserID, url); serr != nil {
+			return serr
+		}
+		return h.Audit.Write(ctx, tx, audit.Event{Action: "account.avatar.update", TargetType: "user", TargetID: p.UserID.String(), TargetLabel: p.Username})
+	})
+	if err != nil {
+		avatars.Remove(h.Cfg.DataDir, url) // the DB write failed; drop the orphan file
+		return err
+	}
+	if old != "" && old != url {
+		avatars.Remove(h.Cfg.DataDir, old)
+	}
+	httpx.JSON(w, r, http.StatusOK, map[string]string{"avatar_url": url})
+	return nil
+}
+
+// avatarUploadError maps an avatars sentinel error to an HTTP problem. Shared
+// shape used by both the self (account) and admin (api) avatar handlers.
+func avatarUploadError(err error) error {
+	switch {
+	case errors.Is(err, avatars.ErrTooLarge):
+		return httpx.NewError(http.StatusRequestEntityTooLarge, "payload_too_large", "头像不能超过 2MB")
+	case errors.Is(err, avatars.ErrUnsupportedType):
+		return httpx.NewError(http.StatusUnsupportedMediaType, "unsupported_media_type", "仅支持 PNG/JPEG/WebP 图片")
+	case errors.Is(err, avatars.ErrNoFile):
+		return httpx.ErrBadRequest.WithDetail("缺少头像文件")
+	default:
+		return err
+	}
+}
+
+func (h *Handlers) handleServeAvatar(w http.ResponseWriter, r *http.Request) error {
+	if !avatars.ServeFile(w, r, h.Cfg.DataDir, chi.URLParam(r, "file")) {
+		return httpx.ErrNotFound
+	}
 	return nil
 }
 
@@ -212,6 +272,38 @@ func (h *Handlers) handleDeletePasskey(w http.ResponseWriter, r *http.Request) e
 			return derr
 		}
 		return h.Audit.Write(ctx, tx, audit.Event{Action: "mfa.webauthn.delete", TargetType: "user", TargetID: p.UserID.String(), TargetLabel: p.Username})
+	})
+	if err != nil {
+		return err
+	}
+	httpx.NoContent(w)
+	return nil
+}
+
+type renamePasskeyReq struct {
+	Name string `json:"name"`
+}
+
+// handleRenamePasskey updates a passkey's display name (owner-scoped).
+func (h *Handlers) handleRenamePasskey(w http.ResponseWriter, r *http.Request) error {
+	p, _ := authctx.From(r.Context())
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		return httpx.ErrBadRequest
+	}
+	var req renamePasskeyReq
+	if err := httpx.DecodeJSON(r, &req); err != nil {
+		return err
+	}
+	name := strings.TrimSpace(req.Name)
+	if name == "" || len([]rune(name)) > 64 {
+		return httpx.ErrBadRequest.WithDetail("名称需为 1-64 个字符")
+	}
+	err = h.Store.WithTx(r.Context(), func(ctx context.Context, tx pgx.Tx) error {
+		if rerr := h.WebAuthn.RenameCredential(ctx, tx, p.UserID, id, name); rerr != nil {
+			return rerr
+		}
+		return h.Audit.Write(ctx, tx, audit.Event{Action: "mfa.webauthn.rename", TargetType: "user", TargetID: p.UserID.String(), TargetLabel: p.Username})
 	})
 	if err != nil {
 		return err

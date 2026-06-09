@@ -115,6 +115,31 @@ func (h *Handlers) assertNotSuperAdminTarget(ctx context.Context, target uuid.UU
 	return nil
 }
 
+// assertSystemPermLocked blocks directly granting/revoking an IAM system-app
+// permission to a super-admin target (feature 7: a super admin's IAM-self
+// permissions are fixed via their built-in role and not separately editable
+// here). This makes the UI's system-app lock a real boundary; it is harmless for
+// effective access since the super_admin role already includes every system
+// permission. Non-super-admin targets are unaffected (system perms remain
+// directly assignable to them as before).
+func (h *Handlers) assertSystemPermLocked(ctx context.Context, targetUser, permID uuid.UUID) error {
+	super, err := h.isSuperAdmin(ctx, targetUser)
+	if err != nil {
+		return err
+	}
+	if !super {
+		return nil
+	}
+	p, err := h.Repo.GetPermission(ctx, h.Store.Pool, permID)
+	if err != nil {
+		return httpx.ErrNotFound
+	}
+	if p.IsSystem || p.ApplicationID == rbac.SystemAppID {
+		return httpx.ErrForbidden.WithDetail("超级管理员的 IAM 系统权限不可在此修改")
+	}
+	return nil
+}
+
 // errSystemObject is returned when a write targets a protected built-in object.
 var errSystemObject = httpx.ErrForbidden.WithDetail("内建系统对象不可修改")
 

@@ -183,7 +183,7 @@ func scanUser(row pgx.Row) (*User, error) {
 	var u User
 	err := row.Scan(&u.ID, &u.Username, &u.Email, &u.DisplayName, &u.Status,
 		&u.IsActive, &u.ForcePasswordChange, &u.MustEnrollMFA, &u.PermVersion,
-		&u.CreatedAt, &u.UpdatedAt)
+		&u.CreatedAt, &u.UpdatedAt, &u.AvatarURL)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -193,7 +193,7 @@ func scanUser(row pgx.Row) (*User, error) {
 	return &u, nil
 }
 
-const userCols = `id, username, email, display_name, status, is_active, force_password_change, must_enroll_mfa, perm_version, created_at, updated_at`
+const userCols = `id, username, email, display_name, status, is_active, force_password_change, must_enroll_mfa, perm_version, created_at, updated_at, avatar_url`
 
 // CreateUser inserts a new user.
 func (Repo) CreateUser(ctx context.Context, db store.DBTX, u *User) error {
@@ -273,6 +273,20 @@ func (Repo) UpdateSelfProfile(ctx context.Context, db store.DBTX, id uuid.UUID, 
 	ct, err := db.Exec(ctx,
 		`UPDATE users SET email=$2, display_name=$3 WHERE id=$1 AND deleted_at IS NULL`,
 		id, email, displayName)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SetUserAvatar sets a user's avatar URL (or ” to clear). Returns ErrNotFound
+// if the user does not exist or is soft-deleted.
+func (Repo) SetUserAvatar(ctx context.Context, db store.DBTX, id uuid.UUID, url string) error {
+	ct, err := db.Exec(ctx,
+		`UPDATE users SET avatar_url=$2 WHERE id=$1 AND deleted_at IS NULL`, id, url)
 	if err != nil {
 		return err
 	}

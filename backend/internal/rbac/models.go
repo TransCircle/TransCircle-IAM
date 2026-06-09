@@ -29,6 +29,7 @@ type User struct {
 	IsActive            bool      `json:"is_active"`
 	ForcePasswordChange bool      `json:"force_password_change"`
 	MustEnrollMFA       bool      `json:"must_enroll_mfa"`
+	AvatarURL           string    `json:"avatar_url"`
 	PermVersion         int64     `json:"-"`
 	CreatedAt           time.Time `json:"created_at"`
 	UpdatedAt           time.Time `json:"updated_at"`

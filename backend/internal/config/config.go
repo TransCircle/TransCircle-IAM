@@ -79,6 +79,10 @@ type Config struct {
 	// BootstrapOutFile: where the first-admin credentials + recovery codes are written (0600).
 	BootstrapOutFile string `env:"IAM_BOOTSTRAP_OUT_FILE" envDefault:"/var/lib/iam/bootstrap.json"`
 
+	// DataDir is the persistent, writable data directory (mounted volume). Used
+	// for user-uploaded files such as avatars (<DataDir>/avatars/<uuid>.<ext>).
+	DataDir string `env:"IAM_DATA_DIR" envDefault:"/var/lib/iam"`
+
 	// OAuth token lifetimes (defaults; per-client overrides exist).
 	AccessTokenTTL  time.Duration `env:"IAM_ACCESS_TOKEN_TTL" envDefault:"15m"`
 	RefreshTokenTTL time.Duration `env:"IAM_REFRESH_TOKEN_TTL" envDefault:"720h"`
