@@ -7,6 +7,8 @@ import { Button, Card, CardContent, CardHeader, CardTitle } from "@/components/u
 
 interface ConsentInfo {
   client_name: string;
+  app_name?: string;
+  app_description?: string;
   scopes: { name: string; display_name: string; description: string }[];
 }
 
@@ -56,8 +58,25 @@ export function ConsentPage() {
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle>授权请求</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            应用 <b>{info?.client_name || clientID}</b> 请求以 <b>{me?.user.username}</b> 的身份访问以下信息：
+          {(() => {
+            const appName = info?.app_name || info?.client_name || clientID;
+            return (
+              <div className="flex items-start gap-3 pt-1">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl brand-gradient text-lg font-semibold text-white">
+                  {appName.slice(0, 1).toUpperCase()}
+                </span>
+                <div className="min-w-0">
+                  <div className="truncate text-base font-semibold">{appName}</div>
+                  {info?.app_description && <div className="text-xs text-muted-foreground">{info.app_description}</div>}
+                  {info?.app_name && info.client_name && info.app_name !== info.client_name && (
+                    <div className="mt-0.5 text-xs text-muted-foreground">客户端：{info.client_name}</div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+          <p className="pt-2 text-sm text-muted-foreground">
+            请求以 <b>{me?.user.username}</b> 的身份访问以下信息：
           </p>
         </CardHeader>
         <CardContent className="space-y-4">

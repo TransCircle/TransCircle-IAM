@@ -114,10 +114,20 @@ func (p *Provider) handleConsentInfo(w http.ResponseWriter, r *http.Request) err
 		}
 		out = append(out, cs)
 	}
-	httpx.JSON(w, r, http.StatusOK, map[string]any{
+	resp := map[string]any{
 		"client_name": client.ClientName,
 		"scopes":      out,
-	})
+	}
+	// Enrich with the bound application's name + description so the consent screen
+	// shows the human-facing app, not just the OAuth client. Clients with no
+	// application (app_id NULL) fall back to client_name only.
+	if client.AppID != nil {
+		if app, aerr := p.repo.GetApplication(ctx, p.store.Pool, *client.AppID); aerr == nil {
+			resp["app_name"] = app.DisplayName
+			resp["app_description"] = app.Description
+		}
+	}
+	httpx.JSON(w, r, http.StatusOK, resp)
 	return nil
 }
 
