@@ -4,29 +4,37 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Save, Trash2 } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
 import {
+  Avatar,
   Badge,
   Button,
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-  Checkbox,
+  CheckRow,
   Field,
-  Help,
   Input,
   PageHeader,
   Select,
   Spinner,
   Textarea,
 } from "@/components/ui";
+import { UserSearchSelect } from "@/components/UserSearchSelect";
 import { ConfirmDialog } from "@/components/Dialog";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/auth/AuthProvider";
-import { ADMIN_ROLE_ID, SUPER_ADMIN_ROLE_ID, type Application, type Group, type Role } from "@/lib/types";
+import { ADMIN_ROLE_ID, SUPER_ADMIN_ROLE_ID, type Application, type Group, type Role, type User } from "@/lib/types";
+
+interface GroupMember {
+  id: string;
+  username: string;
+  display_name: string;
+  avatar_url: string;
+}
 
 interface GroupDetail {
   group: Group;
-  member_ids: string[];
+  members: GroupMember[];
   role_ids: string[];
 }
 
@@ -81,6 +89,75 @@ export function GroupDetailPage() {
     onError: (e) => toast(errorMessage(e), "error"),
   });
 
+  // Optimistic role toggle: flip role_ids in the ["group", id] cache immediately,
+  // roll back on error, reconcile on settle.
+  const toggleRole = useMutation({
+    mutationFn: ({ role, checked }: { role: Role; checked: boolean }) =>
+      checked
+        ? api.post(`/api/v1/admin/groups/${id}/roles`, { id: role.id })
+        : api.delete(`/api/v1/admin/groups/${id}/roles/${role.id}`),
+    onMutate: async ({ role, checked }) => {
+      await qc.cancelQueries({ queryKey: ["group", id] });
+      const prev = qc.getQueryData<GroupDetail>(["group", id]);
+      qc.setQueryData<GroupDetail>(["group", id], (old) =>
+        old
+          ? { ...old, role_ids: checked ? [...new Set([...old.role_ids, role.id])] : old.role_ids.filter((x) => x !== role.id) }
+          : old
+      );
+      return { prev };
+    },
+    onError: (e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["group", id], ctx.prev);
+      toast(errorMessage(e), "error");
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["group", id] }),
+  });
+
+  const addMember = useMutation({
+    mutationFn: (opt: { id: string; label: string; sublabel?: string; avatar_url?: string | null }) =>
+      api.post(`/api/v1/admin/groups/${id}/members`, { user_ids: [opt.id] }),
+    onMutate: async (opt) => {
+      await qc.cancelQueries({ queryKey: ["group", id] });
+      const prev = qc.getQueryData<GroupDetail>(["group", id]);
+      qc.setQueryData<GroupDetail>(["group", id], (old) =>
+        old && !old.members.some((m) => m.id === opt.id)
+          ? { ...old, members: [...old.members, { id: opt.id, username: opt.sublabel || "", display_name: opt.label, avatar_url: opt.avatar_url || "" }] }
+          : old
+      );
+      return { prev };
+    },
+    onError: (e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["group", id], ctx.prev);
+      toast(errorMessage(e), "error");
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["group", id] }),
+  });
+
+  const removeMember = useMutation({
+    mutationFn: (userId: string) => api.delete(`/api/v1/admin/groups/${id}/members/${userId}`),
+    onMutate: async (userId) => {
+      await qc.cancelQueries({ queryKey: ["group", id] });
+      const prev = qc.getQueryData<GroupDetail>(["group", id]);
+      qc.setQueryData<GroupDetail>(["group", id], (old) => (old ? { ...old, members: old.members.filter((m) => m.id !== userId) } : old));
+      return { prev };
+    },
+    onError: (e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["group", id], ctx.prev);
+      toast(errorMessage(e), "error");
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["group", id] }),
+  });
+
+  const fetchUsers = async (search: string) => {
+    const res = await api.get(`/api/v1/admin/users?search=${encodeURIComponent(search)}&limit=20`);
+    return ((res.data.users as User[]) ?? []).map((u) => ({
+      id: u.id,
+      label: u.display_name || u.username,
+      sublabel: u.username,
+      avatar_url: u.avatar_url,
+    }));
+  };
+
   if (detail.isLoading || !meta) {
     return (
       <div className="flex justify-center p-10">
@@ -93,18 +170,9 @@ export function GroupDetailPage() {
   }
   const g = detail.data.group;
   const roleIds = new Set(detail.data.role_ids ?? []);
-  const memberCount = detail.data.member_ids?.length ?? 0;
+  const members = detail.data.members ?? [];
+  const memberIds = new Set(members.map((m) => m.id));
   const roleLocked = (r: Role) => (r.id === SUPER_ADMIN_ROLE_ID || r.id === ADMIN_ROLE_ID) && !isSuperAdmin;
-
-  async function toggleRole(r: Role, checked: boolean) {
-    try {
-      if (checked) await api.post(`/api/v1/admin/groups/${id}/roles`, { id: r.id });
-      else await api.delete(`/api/v1/admin/groups/${id}/roles/${r.id}`);
-      qc.invalidateQueries({ queryKey: ["group", id] });
-    } catch (e) {
-      toast(errorMessage(e), "error");
-    }
-  }
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -141,7 +209,45 @@ export function GroupDetailPage() {
             <Field label="描述">
               <Textarea value={meta.description} disabled={!canWrite || g.is_system} onChange={(e) => setMeta({ ...meta, description: e.target.value })} />
             </Field>
-            <p className="text-xs text-muted-foreground">成员数量：{memberCount}（成员通过用户详情页的「身份组」管理）。</p>
+            <p className="text-xs text-muted-foreground">成员数量：{members.length}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>成员</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {canWrite && (
+              <div>
+                <UserSearchSelect
+                  selectedIds={memberIds}
+                  fetchOptions={fetchUsers}
+                  onAdd={(o) => addMember.mutate(o)}
+                  onRemove={(o) => removeMember.mutate(o.id)}
+                />
+                <p className="mt-1.5 text-xs text-muted-foreground">搜索并点选用户即可批量加入；已是成员的会显示对勾。</p>
+              </div>
+            )}
+            <div className="space-y-2">
+              {members.length === 0 && <p className="text-sm text-muted-foreground">暂无成员。</p>}
+              {members.map((m) => (
+                <div key={m.id} className="flex items-center justify-between rounded-lg border p-2.5">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <Avatar src={m.avatar_url} name={m.display_name || m.username} size="sm" />
+                    <div className="min-w-0 leading-tight">
+                      <div className="truncate text-sm font-medium">{m.display_name || m.username}</div>
+                      <div className="truncate text-xs text-muted-foreground">@{m.username}</div>
+                    </div>
+                  </div>
+                  {canWrite && (
+                    <Button size="icon" variant="ghost" onClick={() => removeMember.mutate(m.id)} aria-label="移除成员">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
 
@@ -158,15 +264,16 @@ export function GroupDetailPage() {
             <p className="text-xs text-muted-foreground">勾选后，组内所有成员都会获得该应用下的对应角色。</p>
             <div className="space-y-2">
               {(roles.data ?? []).map((r) => (
-                <label key={r.id} className="flex items-center gap-2.5 text-sm">
-                  <Checkbox
-                    checked={roleIds.has(r.id)}
-                    disabled={!canWrite || roleLocked(r)}
-                    onCheckedChange={(checked) => toggleRole(r, checked)}
-                  />
+                <CheckRow
+                  key={r.id}
+                  checked={roleIds.has(r.id)}
+                  disabled={!canWrite}
+                  locked={roleLocked(r)}
+                  lockedHint="仅超级管理员可将管理员/超级管理员角色授予身份组。"
+                  onToggle={(checked) => toggleRole.mutate({ role: r, checked })}
+                >
                   {r.display_name} <Badge variant="muted">{r.key}</Badge>
-                  {roleLocked(r) && <Help text="仅超级管理员可将管理员/超级管理员角色授予身份组。" />}
-                </label>
+                </CheckRow>
               ))}
               {(roles.data ?? []).length === 0 && <p className="text-xs text-muted-foreground">该应用暂无角色。</p>}
             </div>
