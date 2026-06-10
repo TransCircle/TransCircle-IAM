@@ -6,6 +6,7 @@ package avatars
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -43,6 +44,23 @@ var extByType = map[string]string{
 var fileRe = regexp.MustCompile(`^[0-9a-fA-F-]{36}\.(png|jpe?g|webp)$`)
 
 func avatarsDir(dataDir string) string { return filepath.Join(dataDir, "avatars") }
+
+// EnsureWritable creates the avatars directory and verifies it is actually
+// writable, so a misconfigured/root-owned data volume fails loudly at startup
+// instead of surfacing as a 500 on the first avatar upload. (The common cause is
+// a bind mount created as root while the container runs as a non-root user.)
+func EnsureWritable(dataDir string) error {
+	dir := avatarsDir(dataDir)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("create avatars dir %s: %w", dir, err)
+	}
+	probe := filepath.Join(dir, ".write-test")
+	if err := os.WriteFile(probe, []byte("ok"), 0o600); err != nil {
+		return fmt.Errorf("avatars dir %s is not writable (检查数据卷权限，容器以非 root 运行): %w", dir, err)
+	}
+	_ = os.Remove(probe)
+	return nil
+}
 
 // PublicURL maps a stored filename to its served URL path.
 func PublicURL(file string) string { return urlPrefix + file }

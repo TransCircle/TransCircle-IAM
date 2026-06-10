@@ -31,6 +31,16 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # One-shot: make the bind-mounted data dir writable by the app's non-root
+  # user (distroless nonroot = uid/gid 65532). Without this, the directory is
+  # created as root by the Docker daemon and avatar uploads fail with a 500.
+  app-init:
+    image: busybox:1.36
+    command: ["sh", "-c", "mkdir -p /data/avatars && chown -R 65532:65532 /data"]
+    volumes:
+      - ./data/app:/data
+    restart: "no"
+
   app:
     build:
       context: .
@@ -60,6 +70,8 @@ services:
       timeout: 5s
       retries: 5
     depends_on:
+      app-init:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:

@@ -11,6 +11,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"github.com/transcircle/iam/internal/avatars"
 	"github.com/transcircle/iam/internal/config"
 	"github.com/transcircle/iam/internal/db"
 	"github.com/transcircle/iam/internal/logging"
@@ -112,6 +113,12 @@ func Serve(ctx context.Context) error {
 		if werr := writeBootstrapOutput(rt.cfg.BootstrapOutFile, out); werr != nil {
 			log.Warn("could not persist first-admin credentials", "error", werr)
 		}
+	}
+
+	// Fail fast if the data volume can't hold uploaded avatars — otherwise the
+	// problem only shows up as a 500 when a user first changes their avatar.
+	if err := avatars.EnsureWritable(rt.cfg.DataDir); err != nil {
+		return fmt.Errorf("data dir not writable: %w", err)
 	}
 
 	deps, err := buildDeps(ctx, rt, log)
