@@ -234,7 +234,7 @@ function PermissionsTab({ appId }: { appId: string }) {
       </Dialog>
 
       {edit && (
-        <Dialog open onClose={() => setEdit(null)} title={`编辑权限 · ${edit.key}`} onSubmit={() => update.mutate(edit)}
+        <Dialog open onClose={() => setEdit(null)} title={`编辑权限 · ${edit.key}`} onSubmit={() => update.mutate(edit)} submitting={update.isPending}
           footer={<><Button variant="outline" type="button" onClick={() => setEdit(null)}>取消</Button><Button type="submit" loading={update.isPending}>保存</Button></>}>
           <div className="space-y-4">
             <Field label="标识 (key)（不可更改）"><Input value={edit.key} disabled /></Field>
@@ -352,7 +352,7 @@ function RolesTab({ appId }: { appId: string }) {
       </Dialog>
 
       {editMeta && (
-        <Dialog open onClose={() => setEditMeta(null)} title={`编辑角色 · ${editMeta.key}`} onSubmit={() => update.mutate(editMeta)}
+        <Dialog open onClose={() => setEditMeta(null)} title={`编辑角色 · ${editMeta.key}`} onSubmit={() => update.mutate(editMeta)} submitting={update.isPending}
           footer={<><Button variant="outline" type="button" onClick={() => setEditMeta(null)}>取消</Button><Button type="submit" loading={update.isPending}>保存</Button></>}>
           <div className="space-y-4">
             <Field label="标识 (key)（不可更改）"><Input value={editMeta.key} disabled /></Field>

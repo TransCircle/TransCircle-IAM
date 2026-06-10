@@ -16,7 +16,7 @@ export function AuditPage() {
   const debouncedAction = useDebounced(action);
   React.useEffect(() => setOffset(0), [debouncedAction, result]);
 
-  const { data, isLoading } = useQuery<{ entries: AuditEntry[] }>({
+  const { data, isLoading, isError, error, refetch } = useQuery<{ entries: AuditEntry[] }>({
     queryKey: ["audit", debouncedAction, result, offset],
     queryFn: async () =>
       (
@@ -46,6 +46,8 @@ export function AuditPage() {
       </div>
       <DataTable<AuditEntry>
         loading={isLoading}
+        error={isError ? error : undefined}
+        onRetry={() => refetch()}
         rows={data?.entries}
         rowKey={(e) => e.id}
         columns={[
@@ -67,8 +69,8 @@ export function AuditPage() {
       <Pager
         offset={offset}
         limit={limit}
-        count={data?.entries.length ?? 0}
-        hasMore={(data?.entries.length ?? 0) === limit}
+        count={data?.entries?.length ?? 0}
+        hasMore={(data?.entries?.length ?? 0) === limit}
         onOffsetChange={setOffset}
       />
     </div>

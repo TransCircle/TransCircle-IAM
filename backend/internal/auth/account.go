@@ -13,6 +13,7 @@ import (
 
 	"github.com/transcircle/iam/internal/audit"
 	"github.com/transcircle/iam/internal/authctx"
+	"github.com/transcircle/iam/internal/authn"
 	"github.com/transcircle/iam/internal/avatars"
 	"github.com/transcircle/iam/internal/httpx"
 	"github.com/transcircle/iam/internal/rbac"
@@ -293,6 +294,9 @@ func (h *Handlers) handleDeletePasskey(w http.ResponseWriter, r *http.Request) e
 		return h.Audit.Write(ctx, tx, audit.Event{Action: "mfa.webauthn.delete", TargetType: "user", TargetID: p.UserID.String(), TargetLabel: p.Username})
 	})
 	if err != nil {
+		if errors.Is(err, authn.ErrCredentialNotFound) {
+			return httpx.ErrNotFound.WithDetail("通行密钥不存在")
+		}
 		return err
 	}
 	httpx.NoContent(w)
@@ -325,6 +329,9 @@ func (h *Handlers) handleRenamePasskey(w http.ResponseWriter, r *http.Request) e
 		return h.Audit.Write(ctx, tx, audit.Event{Action: "mfa.webauthn.rename", TargetType: "user", TargetID: p.UserID.String(), TargetLabel: p.Username})
 	})
 	if err != nil {
+		if errors.Is(err, authn.ErrCredentialNotFound) {
+			return httpx.ErrNotFound.WithDetail("通行密钥不存在")
+		}
 		return err
 	}
 	httpx.NoContent(w)

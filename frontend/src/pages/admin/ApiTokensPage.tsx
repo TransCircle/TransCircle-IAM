@@ -132,6 +132,8 @@ export function ApiTokensPage() {
       />
       <DataTable<APIToken>
         loading={tokens.isLoading}
+        error={tokens.isError ? tokens.error : undefined}
+        onRetry={() => tokens.refetch()}
         rows={tokens.data}
         rowKey={(t) => t.id}
         columns={[

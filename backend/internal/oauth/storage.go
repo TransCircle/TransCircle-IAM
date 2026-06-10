@@ -12,6 +12,7 @@ import (
 	"github.com/ory/fosite"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/transcircle/iam/internal/logging"
 	"github.com/transcircle/iam/internal/store"
 )
 
@@ -269,11 +270,18 @@ func (s *storage) CreateRefreshTokenSession(ctx context.Context, signature strin
 func (s *storage) GetRefreshTokenSession(ctx context.Context, signature string, session fosite.Session) (fosite.Requester, error) {
 	// Reuse detection: a revoked (already-rotated) token being presented again
 	// means a leak — revoke the whole family (must-fix #1). A missing chain row is
-	// an anomaly and is treated as inactive (fail-closed).
-	var revoked bool
+	// an anomaly and is treated as inactive (fail-closed). We also re-check the
+	// owning user's status: deactivating or deleting a user must immediately stop
+	// their connected apps from minting new tokens off an outstanding refresh
+	// token, which the cookie-session revoke alone does not cover.
+	var revoked, userActive bool
 	var family uuid.UUID
+	var userDeleted *time.Time
 	err := s.st.Pool.QueryRow(ctx,
-		`SELECT revoked, family_id FROM oauth_refresh_chains WHERE jti=$1`, signature).Scan(&revoked, &family)
+		`SELECT c.revoked, c.family_id, COALESCE(u.is_active, false), u.deleted_at
+		   FROM oauth_refresh_chains c
+		   LEFT JOIN users u ON u.id = c.user_id
+		  WHERE c.jti=$1`, signature).Scan(&revoked, &family, &userActive, &userDeleted)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, fosite.ErrInactiveToken
 	}
@@ -281,6 +289,13 @@ func (s *storage) GetRefreshTokenSession(ctx context.Context, signature string, 
 		return nil, err
 	}
 	if revoked {
+		// An already-rotated refresh token presented again is the canonical signal
+		// of token theft. Log it for the SOC before revoking the whole family.
+		logging.From(ctx).Warn("oauth: refresh token reuse detected; revoking token family", "family_id", family.String())
+		s.revokeFamily(ctx, family)
+		return nil, fosite.ErrInactiveToken
+	}
+	if !userActive || userDeleted != nil {
 		s.revokeFamily(ctx, family)
 		return nil, fosite.ErrInactiveToken
 	}

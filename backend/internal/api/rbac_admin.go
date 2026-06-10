@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -352,7 +353,15 @@ func (h *Handlers) setRolePermissions(w http.ResponseWriter, r *http.Request) er
 	// interleave with a concurrent edit; run it at SERIALIZABLE with retry.
 	err = h.Store.WithSerializableTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if err := h.Repo.SetRolePermissions(ctx, tx, id, req.PermissionIDs); err != nil {
-			return httpx.ErrBadRequest.WithDetail(err.Error())
+			switch {
+			case errors.Is(err, rbac.ErrCrossAppPermission):
+				return httpx.ErrBadRequest.WithDetail("权限与角色必须属于同一应用")
+			case errors.Is(err, rbac.ErrNotFound):
+				return httpx.ErrNotFound
+			default:
+				// Propagate raw (incl. pgx 40001) so WithSerializableTx can retry.
+				return err
+			}
 		}
 		if err := h.Repo.BumpPermVersionForRole(ctx, tx, id); err != nil {
 			return err
@@ -472,7 +481,7 @@ func (h *Handlers) addGroupMembers(w http.ResponseWriter, r *http.Request) error
 		return h.Audit.Write(ctx, tx, audit.Event{Action: "iam.group.add_members", TargetType: "group", TargetID: id.String(), Metadata: map[string]any{"count": len(req.UserIDs)}})
 	})
 	if err != nil {
-		return err
+		return mapWriteError(err)
 	}
 	for _, uid := range req.UserIDs {
 		h.afterPermChange(ctx, uid)
@@ -504,6 +513,11 @@ func (h *Handlers) removeGroupMember(w http.ResponseWriter, r *http.Request) err
 			return err
 		}
 		if err := h.Repo.BumpPermVersion(ctx, tx, userID); err != nil {
+			return err
+		}
+		// A group may confer super_admin; removing its last member must not zero
+		// out the super-admins.
+		if err := h.ensureSuperAdminSurvivesTx(ctx, tx); err != nil {
 			return err
 		}
 		return h.Audit.Write(ctx, tx, audit.Event{Action: "iam.group.remove_member", TargetType: "group", TargetID: id.String(), Metadata: map[string]any{"user": userID.String()}})
@@ -584,7 +598,7 @@ func (h *Handlers) addGroupRole(w http.ResponseWriter, r *http.Request) error {
 		return h.Audit.Write(ctx, tx, audit.Event{Action: "iam.group.add_role", TargetType: "group", TargetID: id.String(), Metadata: map[string]any{"role": req.ID.String()}})
 	})
 	if err != nil {
-		return err
+		return mapWriteError(err)
 	}
 	httpx.NoContent(w)
 	return nil
@@ -609,6 +623,12 @@ func (h *Handlers) removeGroupRole(w http.ResponseWriter, r *http.Request) error
 		}
 		if err := h.Repo.RemoveGroupRole(ctx, tx, id, roleID); err != nil {
 			return err
+		}
+		// Detaching super_admin from a group must not remove the last super-admin.
+		if roleID == rbac.SuperAdminRole {
+			if err := h.ensureSuperAdminSurvivesTx(ctx, tx); err != nil {
+				return err
+			}
 		}
 		return h.Audit.Write(ctx, tx, audit.Event{Action: "iam.group.remove_role", TargetType: "group", TargetID: id.String(), Metadata: map[string]any{"role": roleID.String()}})
 	})

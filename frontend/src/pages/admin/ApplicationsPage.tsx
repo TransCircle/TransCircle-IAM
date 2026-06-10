@@ -63,6 +63,8 @@ export function ApplicationsPage() {
       />
       <DataTable<Application>
         loading={apps.isLoading}
+        error={apps.isError ? apps.error : undefined}
+        onRetry={() => apps.refetch()}
         rows={apps.data}
         rowKey={(a) => a.id}
         columns={[
@@ -88,7 +90,7 @@ export function ApplicationsPage() {
         ]}
       />
 
-      <Dialog open={open} onClose={() => setOpen(false)} title="新建应用" onSubmit={submitCreate}
+      <Dialog open={open} onClose={() => setOpen(false)} title="新建应用" onSubmit={submitCreate} submitting={create.isPending}
         footer={<><Button variant="outline" type="button" onClick={() => setOpen(false)}>取消</Button><Button type="submit" loading={create.isPending}>创建</Button></>}>
         <div className="space-y-4">
           <Field label="标识 (key)" hint="唯一英文标识，如 wiki、grafana" help="创建后作为 OIDC 客户端绑定与权限查询 API 的应用标识，建议用小写字母/数字。">

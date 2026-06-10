@@ -93,6 +93,16 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		// Defense-in-depth CSP for an IAM console: no inline/remote scripts (the
+		// Vite bundle is same-origin hashed assets), blob:/data: only for avatar
+		// previews, and no framing. The CSRF cookie is JS-readable by design, so a
+		// strict script-src is the key guard against token theft via XSS. (In the
+		// nginx-fronted deployment, also set this on the SPA document responses.)
+		h.Set("Content-Security-Policy",
+			"default-src 'self'; base-uri 'self'; object-src 'none'; "+
+				"frame-ancestors 'none'; form-action 'self'; "+
+				"img-src 'self' data: blob:; font-src 'self'; "+
+				"style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'")
 		next.ServeHTTP(w, r)
 	})
 }

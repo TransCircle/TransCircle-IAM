@@ -65,6 +65,8 @@ export function GroupsPage() {
       />
       <DataTable<Group>
         loading={groups.isLoading}
+        error={groups.isError ? groups.error : undefined}
+        onRetry={() => groups.refetch()}
         rows={groups.data}
         rowKey={(g) => g.id}
         onRowClick={(g) => navigate(`/admin/groups/${g.id}`)}

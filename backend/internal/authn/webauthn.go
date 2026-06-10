@@ -20,6 +20,10 @@ import (
 	"github.com/transcircle/iam/internal/store"
 )
 
+// ErrCredentialNotFound is returned when a passkey id does not match a credential
+// owned by the user (so callers can render a 404 rather than a 500).
+var ErrCredentialNotFound = errors.New("authn: 通行密钥不存在")
+
 // WebAuthnService wraps go-webauthn. The relying-party config is loaded from the
 // DB per request so admin edits take effect without redeploy (must-fix #13: edits
 // are validated before save in the settings handler).
@@ -65,10 +69,21 @@ func (s *WebAuthnService) instance(ctx context.Context) (*webauthn.WebAuthn, err
 	} else if err != nil {
 		return nil, err
 	}
+	if uv == "" {
+		uv = "preferred"
+	}
+	// Apply the configured user-verification requirement. go-webauthn uses
+	// Config.AuthenticatorSelection.UserVerification as the default for BOTH
+	// BeginRegistration and BeginLogin (and Finish* enforce it from the stored
+	// session), so an admin setting of "required" actually forces a PIN/biometric
+	// instead of being silently ignored.
 	return webauthn.New(&webauthn.Config{
 		RPID:          rpID,
 		RPDisplayName: rpName,
 		RPOrigins:     origins,
+		AuthenticatorSelection: protocol.AuthenticatorSelection{
+			UserVerification: protocol.UserVerificationRequirement(uv),
+		},
 	})
 }
 
@@ -217,6 +232,14 @@ func (s *WebAuthnService) FinishLogin(ctx context.Context, u UserInfo, ticket st
 	if err != nil {
 		return fmt.Errorf("authn: 通行密钥验证失败: %w", err)
 	}
+	// Clone detection: go-webauthn sets CloneWarning when the presented sign
+	// counter regressed below the stored value — the signature of a duplicated
+	// authenticator. Reject the login and alert; do not advance the counter.
+	if cred.Authenticator.CloneWarning {
+		logging.From(ctx).Error("webauthn: clone warning, sign counter regressed — login rejected",
+			"user_id", u.ID.String())
+		return errors.New("authn: 通行密钥状态异常（疑似克隆），已拒绝本次登录")
+	}
 	// Persist the clone-detection counter; log (don't fail the login) on error.
 	if _, uerr := s.st.Pool.Exec(ctx,
 		`UPDATE webauthn_credentials SET sign_count=$2, last_used_at=now() WHERE credential_id=$1`,
@@ -260,10 +283,18 @@ func (s *WebAuthnService) ListCredentials(ctx context.Context, userID uuid.UUID)
 	return out, rows.Err()
 }
 
-// DeleteCredential removes one passkey belonging to the user.
+// DeleteCredential removes one passkey belonging to the user. It returns an error
+// when nothing matched (wrong id or not the owner) so the caller doesn't write a
+// success audit row for a no-op delete.
 func (s *WebAuthnService) DeleteCredential(ctx context.Context, db store.DBTX, userID, credID uuid.UUID) error {
-	_, err := db.Exec(ctx, `DELETE FROM webauthn_credentials WHERE id=$1 AND user_id=$2`, credID, userID)
-	return err
+	ct, err := db.Exec(ctx, `DELETE FROM webauthn_credentials WHERE id=$1 AND user_id=$2`, credID, userID)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return ErrCredentialNotFound
+	}
+	return nil
 }
 
 // RenameCredential sets a passkey's display name (scoped to the owner).
@@ -273,7 +304,7 @@ func (s *WebAuthnService) RenameCredential(ctx context.Context, db store.DBTX, u
 		return err
 	}
 	if ct.RowsAffected() == 0 {
-		return fmt.Errorf("authn: 通行密钥不存在")
+		return ErrCredentialNotFound
 	}
 	return nil
 }

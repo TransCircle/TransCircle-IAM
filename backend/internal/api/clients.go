@@ -154,7 +154,12 @@ func (h *Handlers) revealClientSecret(w http.ResponseWriter, r *http.Request) er
 	err := h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		s, err := h.Clients.RevealSecret(ctx, tx, clientID)
 		if err != nil {
-			return httpx.ErrBadRequest.WithDetail(err.Error())
+			if errors.Is(err, oauth.ErrNotFound) {
+				return httpx.ErrNotFound
+			}
+			// Most often the one-time secret was already revealed/burned; never
+			// echo the raw internal error text to the client.
+			return httpx.ErrBadRequest.WithDetail("密钥已不可再次查看，请轮换后重试").WithInternal(err)
 		}
 		secret = s
 		return h.Audit.Write(ctx, tx, audit.Event{Action: "iam.client.reveal_secret", TargetType: "client", TargetID: clientID})

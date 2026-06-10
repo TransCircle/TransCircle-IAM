@@ -16,7 +16,7 @@ export function SecurityKeysPage() {
   const canRotate = hasPermission("iam.security.rotate");
   const [confirmRotate, setConfirmRotate] = React.useState(false);
 
-  const { data, isLoading } = useQuery<{ signing_keys: SigningKeyInfo[]; active_dek_version: number }>({
+  const { data, isLoading, isError, error, refetch } = useQuery<{ signing_keys: SigningKeyInfo[]; active_dek_version: number }>({
     queryKey: ["security-keys"],
     queryFn: async () => (await api.get("/api/v1/admin/security/keys")).data,
   });
@@ -46,6 +46,8 @@ export function SecurityKeysPage() {
       </Card>
       <DataTable<SigningKeyInfo>
         loading={isLoading}
+        error={isError ? error : undefined}
+        onRetry={() => refetch()}
         rows={data?.signing_keys}
         rowKey={(k) => k.kid}
         columns={[

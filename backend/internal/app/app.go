@@ -102,6 +102,13 @@ func Serve(ctx context.Context) error {
 
 	log := logging.New(rt.cfg.Env)
 
+	// In prod without a KEK the DEK is stored bare next to the data it protects, so
+	// a DB/backup leak exposes every at-rest secret. Warn loudly so operators turn
+	// on IAM_KEK_ENABLED + IAM_KEK/IAM_KEK_FILE.
+	if rt.cfg.IsProd() && !rt.cfg.KEKEnabled {
+		log.Warn("IAM_KEK_ENABLED is off in prod: the DEK is stored unwrapped in the database; set IAM_KEK_ENABLED=true with IAM_KEK/IAM_KEK_FILE to encrypt it at rest")
+	}
+
 	// Single-container self-initialization: migrate + provision keys/first-admin
 	// (idempotent, advisory-locked so --scale replicas don't race).
 	out, err := ensureInitialized(ctx, rt)
@@ -110,8 +117,11 @@ func Serve(ctx context.Context) error {
 	}
 	if out != nil {
 		out.GeneratedAt = time.Now()
-		if werr := writeBootstrapOutput(rt.cfg.BootstrapOutFile, out); werr != nil {
-			log.Warn("could not persist first-admin credentials", "error", werr)
+		// allowStdout=false: never print the first-admin password to the container
+		// log. If the file can't be written, the temp password is lost (recover via
+		// `iam admin reset-password <user>`); we surface that without leaking it.
+		if werr := writeBootstrapOutput(rt.cfg.BootstrapOutFile, out, false); werr != nil {
+			log.Warn("first-admin credentials not persisted; reset with `iam admin reset-password`", "error", werr)
 		}
 	}
 
@@ -132,6 +142,13 @@ func Serve(ctx context.Context) error {
 		Addr:              rt.cfg.HTTPListen,
 		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
+		// Bound slow-body and idle connections so a direct client (bypassing the
+		// upstream proxy) can't hold sockets open. WriteTimeout is generous enough
+		// to stream a 2 MiB avatar response.
+		ReadTimeout:    30 * time.Second,
+		WriteTimeout:   60 * time.Second,
+		IdleTimeout:    120 * time.Second,
+		MaxHeaderBytes: 1 << 20,
 	}
 	metricsSrv := &http.Server{
 		Addr:              rt.cfg.MetricsListen,

@@ -247,7 +247,7 @@ func (Repo) SetRolePermissions(ctx context.Context, db store.DBTX, roleID uuid.U
 			return err
 		}
 		if permApp != appID {
-			return errors.New("rbac: permission and role must belong to the same application")
+			return ErrCrossAppPermission
 		}
 		if _, err := db.Exec(ctx,
 			`INSERT INTO role_permissions (role_id, permission_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,

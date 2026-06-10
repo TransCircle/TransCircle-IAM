@@ -50,6 +50,12 @@ func (h *Handlers) completeMFALogin(w http.ResponseWriter, r *http.Request, lt *
 	if err != nil {
 		return err
 	}
+	// Re-check active status: the account may have been disabled between the
+	// password step and the second factor. Fail closed instead of minting a
+	// session that SessionMiddleware would immediately tear down.
+	if !user.IsActive {
+		return httpx.ErrUnauthorized.WithDetail("账户已被禁用")
+	}
 	// Recovery codes authenticate the session but must NOT satisfy step-up.
 	sess, err := h.establishSession(ctx, user, httpx.ClientIP(ctx), httpx.UserAgent(ctx), []string{"pwd", factor}, 2, true, factor != "recovery", nil)
 	if err != nil {

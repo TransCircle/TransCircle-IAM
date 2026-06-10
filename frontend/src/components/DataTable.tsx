@@ -1,5 +1,6 @@
 import * as React from "react";
-import { EmptyState, Skeleton } from "./ui";
+import { Button, EmptyState, Skeleton } from "./ui";
+import { errorMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export interface Column<T> {
@@ -12,6 +13,8 @@ export function DataTable<T>({
   columns,
   rows,
   loading,
+  error,
+  onRetry,
   empty = "暂无数据",
   rowKey,
   onRowClick,
@@ -19,6 +22,10 @@ export function DataTable<T>({
   columns: Column<T>[];
   rows: T[] | undefined;
   loading?: boolean;
+  // When set, a failed load shows an error panel (with an optional retry) rather
+  // than the empty state — so "load failed" is never indistinguishable from "no data".
+  error?: unknown;
+  onRetry?: () => void;
   empty?: string;
   rowKey: (row: T) => string;
   // When provided, rows become clickable (e.g. to open a detail page). Action
@@ -32,6 +39,18 @@ export function DataTable<T>({
         <Skeleton className="h-8 opacity-80" />
         <Skeleton className="h-8 opacity-60" />
         <Skeleton className="h-8 opacity-40" />
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="rounded-lg border bg-card p-8 text-center">
+        <p className="text-sm text-muted-foreground">{errorMessage(error)}</p>
+        {onRetry && (
+          <Button variant="outline" className="mt-3" onClick={onRetry}>
+            重试
+          </Button>
+        )}
       </div>
     );
   }

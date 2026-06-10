@@ -40,8 +40,11 @@ server {
     # ssl_certificate     /etc/ssl/...;
     # ssl_certificate_key /etc/ssl/...;
 
+    # 头像上传上限 2MB；nginx 默认 client_max_body_size 仅 1m，会先于后端返回 413。
+    client_max_body_size 4m;
+
     location / {
-        proxy_pass http://127.0.0.1:8080;   # = APP_PORT
+        proxy_pass http://127.0.0.1:8080;   # = APP_PORT（compose 仅绑定到 127.0.0.1）
         proxy_set_header Host              $host;
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -53,7 +56,10 @@ server {
 > - 生产经 HTTPS 反代时，`.env` 设 `IAM_ENV=prod` 与 `IAM_COOKIE_SECURE=true`。
 > - 已默认信任所有来源的 `X-Forwarded-*`（`IAM_TRUST_ALL_PROXIES=true`），无需配置来源 IP 段——前提是应用仅经你们的 nginx 暴露。
 > - 数据持久化在当前目录：`./data/postgres`、`./data/redis`、`./data/app`（含首管理员凭据 `bootstrap.json`，0600）。
-> - 首管理员凭据也会打印在 `docker compose logs app`。
+> - 首管理员凭据仅写入 `./data/app/bootstrap.json`（0600），不会打印到容器日志；若该文件写入失败，可用
+>   `docker compose run --rm app admin reset-password <用户名>` 重置密码。
+> - 生产建议开启信封加密 KEK：设 `IAM_KEK_ENABLED=true` 并提供 `IAM_KEK`（base64 32 字节）或 `IAM_KEK_FILE`，
+>   否则 DEK 以明文存于数据库，备份泄露即等同泄露全部静态密钥。
 > - 唯一 MFA 因子丢失且无其他管理员时的破玻璃命令：
 >   `docker compose run --rm app admin reset-mfa <用户名>`。
 

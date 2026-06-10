@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 
 	"github.com/transcircle/iam/internal/httpx"
+	"github.com/transcircle/iam/internal/logging"
 )
 
 // draining is flipped during graceful shutdown so /readyz starts failing and
@@ -26,9 +27,10 @@ func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.deps.Store.Ping(r.Context()); err != nil {
-		httpx.JSON(w, r, http.StatusServiceUnavailable, map[string]string{
-			"status": "not_ready", "error": err.Error(),
-		})
+		// Log the detail server-side; the dependency error text embeds the DB
+		// DSN (host/user/db) and must not be returned to an unauthenticated caller.
+		logging.From(r.Context()).Error("readiness check failed", "error", err)
+		httpx.JSON(w, r, http.StatusServiceUnavailable, map[string]string{"status": "not_ready"})
 		return
 	}
 	httpx.JSON(w, r, http.StatusOK, map[string]string{"status": "ready"})

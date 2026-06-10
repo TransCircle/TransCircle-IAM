@@ -19,6 +19,10 @@ type Principal struct {
 	AAL          int
 	MFASatisfied bool
 	MFAAt        time.Time
+	// AuthAt is when the underlying session was established (the OIDC auth_time);
+	// AMR is the authentication-methods list recorded at login (e.g. pwd, otp).
+	AuthAt time.Time
+	AMR    []string
 	// ImpersonatorID is set when an admin is acting as this user.
 	ImpersonatorID    uuid.UUID
 	ImpersonatorLabel string

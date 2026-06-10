@@ -36,6 +36,11 @@ func (h *Handlers) handleChangePassword(w http.ResponseWriter, r *http.Request) 
 			}
 			return err
 		}
+		// A password change invalidates every other session (a common reason to
+		// change it is suspected compromise); keep only the current one.
+		if err := h.Sessions.RevokeAllForUser(ctx, tx, p.UserID, &p.SessionID); err != nil {
+			return err
+		}
 		return h.Audit.Write(ctx, tx, audit.Event{Action: "password.change", TargetType: "user", TargetID: p.UserID.String(), TargetLabel: p.Username})
 	})
 	if err != nil {

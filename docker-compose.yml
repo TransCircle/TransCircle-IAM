@@ -60,8 +60,10 @@ services:
       IAM_KEK_ENABLED: ${IAM_KEK_ENABLED:-}
       IAM_KEK_FILE: ${IAM_KEK_FILE:-}
     ports:
-      # 唯一对外出口：你们的 nginx 反代到这里。
-      - "${APP_PORT:-8080}:8080"
+      # 仅绑定到回环地址：你们的 nginx 反代到 127.0.0.1:8080（见 README）。
+      # 不要暴露到 0.0.0.0，否则外部可绕过 nginx 直连后端并伪造 X-Forwarded-For
+      # （污染审计 IP、绕过基于 IP 的锁定/限速）。
+      - "127.0.0.1:${APP_PORT:-8080}:8080"
     volumes:
       - ./data/app:/var/lib/iam
     healthcheck:

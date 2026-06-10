@@ -24,7 +24,7 @@ export function UsersPage() {
   const debouncedSearch = useDebounced(search);
   React.useEffect(() => setOffset(0), [debouncedSearch]);
 
-  const { data, isLoading } = useQuery<{ users: User[]; total: number }>({
+  const { data, isLoading, isError, error, refetch } = useQuery<{ users: User[]; total: number }>({
     queryKey: ["users", debouncedSearch, offset],
     queryFn: async () =>
       (await api.get(`/api/v1/admin/users?search=${encodeURIComponent(debouncedSearch)}&limit=${limit}&offset=${offset}`)).data,
@@ -61,6 +61,8 @@ export function UsersPage() {
       </div>
       <DataTable<User>
         loading={isLoading}
+        error={isError ? error : undefined}
+        onRetry={() => refetch()}
         rows={data?.users}
         rowKey={(u) => u.id}
         columns={[
@@ -89,7 +91,7 @@ export function UsersPage() {
           { header: "创建时间", className: "font-mono text-[13px] text-muted-foreground", cell: (u) => formatDate(u.created_at) },
         ]}
       />
-      <Pager offset={offset} limit={limit} count={data?.users.length ?? 0} total={data?.total} onOffsetChange={setOffset} />
+      <Pager offset={offset} limit={limit} count={data?.users?.length ?? 0} total={data?.total} onOffsetChange={setOffset} />
 
       <CreateUserDialog open={open} onClose={() => setOpen(false)} onSubmit={(b) => create.mutate(b)} loading={create.isPending} />
 

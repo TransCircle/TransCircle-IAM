@@ -62,6 +62,9 @@ func (h *Handlers) createAPIToken(w http.ResponseWriter, r *http.Request) error 
 	if req.Name == "" {
 		return httpx.ErrBadRequest.WithDetail("名称必填")
 	}
+	if req.ExpiresInDays < 0 {
+		return httpx.ErrBadRequest.WithDetail("有效期天数不能为负(0 表示永不过期)")
+	}
 	ctx0 := r.Context()
 	// An empty allowed_app_keys means "all applications" — only a super-admin may
 	// mint such a broad token (least privilege).
@@ -133,6 +136,9 @@ func (h *Handlers) updateAPIToken(w http.ResponseWriter, r *http.Request) error 
 	}
 	if req.Name == "" {
 		return httpx.ErrBadRequest.WithDetail("名称必填")
+	}
+	if req.ExpiresInDays != nil && *req.ExpiresInDays < 0 {
+		return httpx.ErrBadRequest.WithDetail("有效期天数不能为负(0 表示永不过期)")
 	}
 	ctx := r.Context()
 	// An empty allowed_app_keys means "all applications" — only a super-admin may

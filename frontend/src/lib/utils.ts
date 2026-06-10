@@ -10,6 +10,18 @@ export function getCookie(name: string): string {
   return match ? decodeURIComponent(match[1]) : "";
 }
 
+// hasControlChar reports whether s contains an ASCII control character. The
+// WHATWG URL parser silently strips tab/newline/CR before parsing, so a value
+// like "/<tab>/evil.com" would otherwise collapse to "//evil.com" — a
+// protocol-relative redirect to a foreign origin.
+function hasControlChar(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 0x20 || c === 0x7f) return true;
+  }
+  return false;
+}
+
 // safeReturnPath validates a post-login `return` target, allowing only
 // same-origin absolute paths (defends against open-redirect / phishing).
 export function safeReturnPath(raw: string | null | undefined): string | null {
@@ -20,9 +32,17 @@ export function safeReturnPath(raw: string | null | undefined): string | null {
   } catch {
     return null;
   }
-  // Must be an absolute same-origin path; reject //, /\, and any scheme.
-  if (!v.startsWith("/") || v.startsWith("//") || v.startsWith("/\\")) return null;
-  return v;
+  if (hasControlChar(v)) return null;
+  if (!v.startsWith("/")) return null;
+  // Resolve against our own origin and require it to stay same-origin. This
+  // catches "//host", "/\\host", and any scheme that slipped through.
+  try {
+    const u = new URL(v, window.location.origin);
+    if (u.origin !== window.location.origin) return null;
+    return u.pathname + u.search + u.hash;
+  } catch {
+    return null;
+  }
 }
 
 export function formatDate(value?: string | null): string {

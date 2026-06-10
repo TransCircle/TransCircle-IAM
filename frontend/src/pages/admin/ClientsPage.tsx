@@ -49,6 +49,8 @@ export function ClientsPage() {
       />
       <DataTable<OAuthClient>
         loading={clients.isLoading}
+        error={clients.isError ? clients.error : undefined}
+        onRetry={() => clients.refetch()}
         rows={clients.data}
         rowKey={(c) => c.id}
         onRowClick={(c) => navigate(`/admin/clients/${c.client_id}`)}

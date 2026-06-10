@@ -157,7 +157,7 @@ func Bootstrap(ctx context.Context) error {
 		return nil
 	}
 	out.GeneratedAt = time.Now()
-	return writeBootstrapOutput(rt.cfg.BootstrapOutFile, out)
+	return writeBootstrapOutput(rt.cfg.BootstrapOutFile, out, true)
 }
 
 // ensureBootstrapAdminRoles re-grants the super_admin AND admin direct roles to
@@ -197,21 +197,31 @@ func ensureWebAuthnRP(ctx context.Context, tx pgx.Tx, issuer string) error {
 	return err
 }
 
-func writeBootstrapOutput(path string, out *bootstrapOutput) error {
+// writeBootstrapOutput persists the first-admin credentials to a 0600 file. When
+// allowStdout is true (interactive CLI) the secrets may also be printed to the
+// operator's terminal, and a write failure falls back to stdout. On the serve
+// path allowStdout is false: secrets are NEVER printed (process stdout is the
+// aggregated, long-retained container log), and a write failure returns an error
+// so the caller surfaces it without leaking the password.
+func writeBootstrapOutput(path string, out *bootstrapOutput, allowStdout bool) error {
 	data, _ := json.MarshalIndent(out, "", "  ")
 	if path != "" {
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err == nil {
 			if err := os.WriteFile(path, data, 0o600); err == nil {
 				fmt.Printf("bootstrap: 首管理员凭据已写入 %s (0600)。\n", path)
-				fmt.Printf("           用户名: %s  临时密码: %s\n", out.Username, out.TempPassword)
+				if allowStdout {
+					fmt.Printf("           用户名: %s  临时密码: %s\n", out.Username, out.TempPassword)
+				}
 				return nil
 			}
 		}
 	}
-	// Fallback: print to stdout.
-	fmt.Println("bootstrap: 无法写入凭据文件，输出到标准输出：")
-	fmt.Println(string(data))
-	return nil
+	if allowStdout {
+		fmt.Println("bootstrap: 无法写入凭据文件，输出到标准输出：")
+		fmt.Println(string(data))
+		return nil
+	}
+	return fmt.Errorf("bootstrap: 无法写入首管理员凭据文件 %q；为避免将密码写入日志，已拒绝回退到标准输出。请配置可写的 IAM_BOOTSTRAP_OUT_FILE，或用 `iam admin reset-password %s` 重置", path, out.Username)
 }
 
 // Admin runs offline break-glass operations.

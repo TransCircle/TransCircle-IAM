@@ -123,7 +123,7 @@ export function SecurityPage() {
                     variant="ghost"
                     onClick={() => {
                       setRenameTarget(pk);
-                      setRenameName(pk.name);
+                      setRenameName(pk.name ?? "");
                     }}
                     aria-label="重命名"
                   >
@@ -185,6 +185,7 @@ export function SecurityPage() {
         onClose={() => setAddOpen(false)}
         title="添加通行密钥"
         onSubmit={() => addPasskey.mutate(newName.trim() || "通行密钥")}
+        submitting={addPasskey.isPending}
         footer={
           <>
             <Button variant="outline" type="button" onClick={() => setAddOpen(false)}>取消</Button>
@@ -201,7 +202,8 @@ export function SecurityPage() {
         open={!!renameTarget}
         onClose={() => setRenameTarget(null)}
         title="重命名通行密钥"
-        onSubmit={() => renameTarget && renamePasskey.mutate({ id: renameTarget.id, name: renameName.trim() || renameTarget.name })}
+        onSubmit={() => renameTarget && renamePasskey.mutate({ id: renameTarget.id, name: renameName.trim() || renameTarget.name || "通行密钥" })}
+        submitting={renamePasskey.isPending}
         footer={
           <>
             <Button variant="outline" type="button" onClick={() => setRenameTarget(null)}>取消</Button>

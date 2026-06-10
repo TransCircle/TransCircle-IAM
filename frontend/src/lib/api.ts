@@ -42,6 +42,15 @@ export function problemFrom(err: unknown): ProblemError {
   if (err instanceof StepUpCancelledError) {
     return { code: "step_up_cancelled", title: "已取消二次验证" };
   }
+  // WebAuthn ceremonies reject with a DOMException when the user dismisses the OS
+  // prompt or it times out. Surface that as a cancellation instead of the
+  // misleading "网络错误" the generic fallback would otherwise show.
+  if (err instanceof DOMException) {
+    if (err.name === "NotAllowedError" || err.name === "AbortError") {
+      return { code: "webauthn_cancelled", title: "未完成通行密钥验证，请重试" };
+    }
+    return { code: "webauthn_error", title: "通行密钥验证失败，请重试" };
+  }
   const ax = err as AxiosError<ProblemError>;
   if (ax?.response?.data?.code) return ax.response.data;
   return { code: "network_error", title: "网络错误，请稍后重试" };

@@ -19,7 +19,7 @@ export function MySessionsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [confirmOthers, setConfirmOthers] = React.useState(false);
-  const { data, isLoading } = useQuery<{ sessions: Session[]; current: string }>({
+  const { data, isLoading, isError, error, refetch } = useQuery<{ sessions: Session[]; current: string }>({
     queryKey: ["my-sessions"],
     queryFn: async () => (await api.get("/api/v1/account/sessions")).data,
   });
@@ -55,6 +55,8 @@ export function MySessionsPage() {
       />
       <DataTable<Session>
         loading={isLoading}
+        error={isError ? error : undefined}
+        onRetry={() => refetch()}
         rows={data?.sessions}
         rowKey={(s) => s.id}
         columns={[

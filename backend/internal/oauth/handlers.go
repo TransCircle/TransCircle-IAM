@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ory/fosite"
@@ -65,19 +66,42 @@ func (p *Provider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// prompt=none means the RP wants silent auth: never render UI; on any required
+	// interaction return the corresponding OIDC error on the redirect_uri instead.
+	promptNone := slices.Contains(strings.Fields(ar.GetRequestForm().Get("prompt")), "none")
+
 	principal, ok := authctx.From(ctx)
 	if !ok {
+		if promptNone {
+			p.oauth2.WriteAuthorizeError(ctx, w, ar, fosite.ErrLoginRequired)
+			return
+		}
 		p.redirectToLogin(w, r)
 		return
 	}
 	user, err := p.repo.GetUser(ctx, p.store.Pool, principal.UserID)
 	if err != nil {
+		if promptNone {
+			p.oauth2.WriteAuthorizeError(ctx, w, ar, fosite.ErrLoginRequired)
+			return
+		}
 		p.redirectToLogin(w, r)
 		return
 	}
 	if user.ForcePasswordChange || user.MustEnrollMFA {
 		// Onboarding incomplete: send the user through login/onboarding first.
+		if promptNone {
+			p.oauth2.WriteAuthorizeError(ctx, w, ar, fosite.ErrLoginRequired)
+			return
+		}
 		p.redirectToLogin(w, r)
+		return
+	}
+	if principal.Impersonating() {
+		// An admin acting as this user must not be able to grant a third-party
+		// app durable access (refresh tokens + recorded consent) on the victim's
+		// behalf. Refuse to complete the authorization in an impersonation session.
+		p.oauth2.WriteAuthorizeError(ctx, w, ar, fosite.ErrAccessDenied.WithHint("不支持在模拟登录会话中完成 OAuth 授权"))
 		return
 	}
 
@@ -103,6 +127,10 @@ func (p *Provider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !approved {
+			if promptNone {
+				p.oauth2.WriteAuthorizeError(ctx, w, ar, fosite.ErrConsentRequired)
+				return
+			}
 			p.redirectToConsent(w, r, client, scopes)
 			return
 		}
@@ -132,12 +160,40 @@ func (p *Provider) finishAuthorize(w http.ResponseWriter, r *http.Request, ar fo
 		p.oauth2.WriteAuthorizeError(ctx, w, ar, err)
 		return
 	}
+	p.setAuthContext(sess, principal)
 	resp, err := p.oauth2.NewAuthorizeResponse(ctx, ar, sess)
 	if err != nil {
 		p.oauth2.WriteAuthorizeError(ctx, w, ar, err)
 		return
 	}
 	p.oauth2.WriteAuthorizeResponse(ctx, w, ar, resp)
+}
+
+// setAuthContext stamps the OIDC auth_time/rat/acr/amr onto the ID token from the
+// IAM session. Without auth_time fosite rejects any request carrying max_age or a
+// prompt with server_error, and RPs cannot see that (or how strongly) the user
+// authenticated.
+func (p *Provider) setAuthContext(sess *Session, principal *authctx.Principal) {
+	if principal == nil || sess.DefaultSession == nil || sess.DefaultSession.Claims == nil {
+		return
+	}
+	claims := sess.DefaultSession.Claims
+	authTime := principal.AuthAt
+	if authTime.IsZero() {
+		authTime = time.Now()
+	}
+	claims.AuthTime = authTime
+	claims.RequestedAt = time.Now()
+	amr := principal.AMR
+	if len(amr) == 0 {
+		amr = []string{"pwd"}
+	}
+	claims.AuthenticationMethodsReferences = amr
+	if principal.AAL >= 2 {
+		claims.AuthenticationContextClassReference = "urn:transcircle:iam:aal2"
+	} else {
+		claims.AuthenticationContextClassReference = "urn:transcircle:iam:aal1"
+	}
 }
 
 func (p *Provider) handleToken(w http.ResponseWriter, r *http.Request) {
@@ -153,6 +209,18 @@ func (p *Provider) handleToken(w http.ResponseWriter, r *http.Request) {
 		ar.GrantAudience(p.cfg.Issuer)
 		for _, sc := range ar.GetRequestedScopes() {
 			ar.GrantScope(sc)
+		}
+	}
+	// On refresh, re-resolve the user's current identity + authorization so a
+	// rotated token never carries stale roles/permissions/profile. Best-effort:
+	// the owning user's active status is already enforced in the storage layer.
+	if ar.GetGrantTypes().ExactOne("refresh_token") {
+		if s, ok := ar.GetSession().(*Session); ok {
+			if uid, perr := uuidFromString(s.GetSubject()); perr == nil {
+				if user, uerr := p.repo.GetUser(ctx, p.store.Pool, uid); uerr == nil {
+					_ = p.enrich(ctx, s, user, ar.GetClient().GetID(), []string(ar.GetGrantedScopes()))
+				}
+			}
 		}
 	}
 	resp, err := p.oauth2.NewAccessResponse(ctx, ar)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -62,13 +63,29 @@ func (s *TOTPService) ConfirmEnroll(ctx context.Context, db store.DBTX, userID u
 	return err
 }
 
-// Verify validates a login TOTP code against the confirmed secret.
+// Verify validates a login/step-up TOTP code against the confirmed secret and
+// enforces single use: an accepted code cannot be replayed within its validity
+// window (RFC 6238 §5.2). Both the login and step-up paths share this check via
+// the same Redis key, so a captured code can't be reused on either.
 func (s *TOTPService) Verify(ctx context.Context, st *store.Store, userID uuid.UUID, code string) (bool, error) {
 	secret, err := s.loadConfirmedSecret(ctx, st, userID)
 	if err != nil {
 		return false, err
 	}
-	return totp.Validate(code, secret), nil
+	if !totp.Validate(code, secret) {
+		return false, nil
+	}
+	// Claim the code. The TTL (90s) covers the 30s step plus the ±1-step skew so
+	// the same code can never be accepted twice. Fail closed if Redis is
+	// unavailable: we must not accept a code we can't guarantee is unused.
+	ok, err := st.Redis.SetNX(ctx, "totp:used:"+userID.String()+":"+code, "1", 90*time.Second).Result()
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return false, nil // already consumed within the window — reject replay
+	}
+	return true, nil
 }
 
 // HasConfirmed reports whether the user has a confirmed TOTP factor.

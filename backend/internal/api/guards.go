@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/transcircle/iam/internal/authctx"
 	"github.com/transcircle/iam/internal/httpx"
@@ -110,8 +111,10 @@ func (h *Handlers) guardPrivilegedGroupMembership(ctx context.Context, actor, gr
 	return h.Guard.CheckStepUp(ctx)
 }
 
-// assertNotLastSuperAdmin prevents removing the super_admin role from the only
-// remaining holder (avoids a lockout).
+// assertNotLastSuperAdmin is a fast pre-check that rejects removing the
+// super_admin role from the only remaining holder. It is best-effort (read
+// outside the write tx); ensureSuperAdminSurvivesTx is the authoritative,
+// race-free guard run inside the mutating transaction.
 func (h *Handlers) assertNotLastSuperAdmin(ctx context.Context, roleID uuid.UUID) error {
 	if roleID != rbac.SuperAdminRole {
 		return nil
@@ -121,6 +124,32 @@ func (h *Handlers) assertNotLastSuperAdmin(ctx context.Context, roleID uuid.UUID
 		return err
 	}
 	if n <= 1 {
+		return httpx.ErrForbidden.WithDetail("不能移除最后一个超级管理员")
+	}
+	return nil
+}
+
+// superAdminGuardLockKey serializes every super-admin-affecting mutation so the
+// in-tx count reflects committed state (distinct from the migration/bootstrap
+// advisory-lock keys).
+const superAdminGuardLockKey int64 = 6_421_775_004_991_003
+
+// ensureSuperAdminSurvivesTx aborts the surrounding transaction if removing a
+// role/group binding would leave zero active super-admins. It must run AFTER the
+// mutation, inside the same tx: a transaction-level advisory lock serializes
+// concurrent super-admin removals (so the count sees the other transaction's
+// committed delete), closing the TOCTOU that a bare count at READ COMMITTED
+// would still allow. Covers the direct-role path and the group-conferred paths
+// (group role removal, group membership removal) uniformly.
+func (h *Handlers) ensureSuperAdminSurvivesTx(ctx context.Context, tx pgx.Tx) error {
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, superAdminGuardLockKey); err != nil {
+		return err
+	}
+	n, err := h.Repo.CountActiveUsersWithRole(ctx, tx, rbac.SuperAdminRole)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
 		return httpx.ErrForbidden.WithDetail("不能移除最后一个超级管理员")
 	}
 	return nil
@@ -160,6 +189,32 @@ func (h *Handlers) assertSystemPermLocked(ctx context.Context, targetUser, permI
 	}
 	if p.IsSystem || p.ApplicationID == rbac.SystemAppID {
 		return httpx.ErrForbidden.WithDetail("超级管理员的 IAM 系统权限不可在此修改")
+	}
+	return nil
+}
+
+// assertCanGrantPermission enforces privilege subset for IAM system-app
+// permissions: a caller may only grant or revoke a system permission they
+// already hold themselves (super_admin holds all of them). Without this, any
+// holder of iam.users.write could call POST /admin/users/{ownId}/permissions and
+// assign themselves arbitrary system permissions such as iam.security.rotate or
+// iam.clients.rotate_secret — a direct privilege escalation. App-scoped
+// (non-system) permissions are ordinary admin delegation and are not restricted
+// here.
+func (h *Handlers) assertCanGrantPermission(ctx context.Context, actor, permID uuid.UUID) error {
+	p, err := h.Repo.GetPermission(ctx, h.Store.Pool, permID)
+	if err != nil {
+		return httpx.ErrNotFound
+	}
+	if !p.IsSystem && p.ApplicationID != rbac.SystemAppID {
+		return nil
+	}
+	ok, err := h.Authz.HasSystem(ctx, actor, p.Key)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return httpx.ErrForbidden.WithDetail("不能授予或移除你自身不具备的系统权限")
 	}
 	return nil
 }

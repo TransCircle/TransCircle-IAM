@@ -14,11 +14,46 @@ import (
 	"github.com/transcircle/iam/internal/crypto"
 	"github.com/transcircle/iam/internal/httpx"
 	"github.com/transcircle/iam/internal/rbac"
+	"github.com/transcircle/iam/internal/store"
 )
 
+// revokeUserRefreshChains marks every active OAuth refresh-token family owned by
+// a user as revoked, in the caller's transaction, so disabling or deleting the
+// account immediately stops their connected applications from minting new tokens
+// (RevokeAllForUser only kills IAM cookie sessions, not already-issued OAuth
+// refresh tokens). The matching Redis cache entries are dropped after commit;
+// even if that is skipped the tokens fail closed on next use (revoked flag +
+// user-active recheck) and expire by TTL.
+func (h *Handlers) revokeUserRefreshChains(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
+	rows, err := tx.Query(ctx,
+		`UPDATE oauth_refresh_chains SET revoked=true WHERE user_id=$1 AND revoked=false RETURNING jti`, userID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	var jtis []string
+	for rows.Next() {
+		var j string
+		if err := rows.Scan(&j); err != nil {
+			return err
+		}
+		jtis = append(jtis, j)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(jtis) > 0 {
+		store.AfterCommit(ctx, func(ctx context.Context) {
+			for _, j := range jtis {
+				_ = h.Store.Redis.Del(ctx, "oauth:rt:"+j).Err()
+			}
+		})
+	}
+	return nil
+}
+
 func (h *Handlers) listUsers(w http.ResponseWriter, r *http.Request) error {
-	limit := queryInt(r, "limit", 20)
-	offset := queryInt(r, "offset", 0)
+	limit, offset := pageParams(r, 20, 200)
 	search := r.URL.Query().Get("search")
 	users, total, err := h.Repo.ListUsers(r.Context(), h.Store.Pool, search, limit, offset)
 	if err != nil {
@@ -120,9 +155,12 @@ func (h *Handlers) updateUser(w http.ResponseWriter, r *http.Request) error {
 				return err
 			}
 		}
-		// Disabling a user revokes their sessions immediately.
+		// Disabling a user revokes their sessions and OAuth refresh tokens at once.
 		if req.Status == "disabled" {
 			if err := h.Sessions.RevokeAllForUser(ctx, tx, id, nil); err != nil {
+				return err
+			}
+			if err := h.revokeUserRefreshChains(ctx, tx, id); err != nil {
 				return err
 			}
 		}
@@ -149,6 +187,9 @@ func (h *Handlers) deleteUser(w http.ResponseWriter, r *http.Request) error {
 	}
 	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if err := h.Sessions.RevokeAllForUser(ctx, tx, id, nil); err != nil {
+			return err
+		}
+		if err := h.revokeUserRefreshChains(ctx, tx, id); err != nil {
 			return err
 		}
 		if err := h.Repo.SoftDeleteUser(ctx, tx, id); err != nil {
@@ -257,6 +298,11 @@ func (h *Handlers) resetPassword(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 		if err := h.Sessions.RevokeAllForUser(ctx, tx, id, nil); err != nil {
+			return err
+		}
+		// An admin reset is a security event (likely compromise): cut connected
+		// apps' refresh tokens too, not just IAM sessions.
+		if err := h.revokeUserRefreshChains(ctx, tx, id); err != nil {
 			return err
 		}
 		return h.Audit.Write(ctx, tx, audit.Event{
@@ -384,6 +430,9 @@ func (h *Handlers) mutateAssignment(w http.ResponseWriter, r *http.Request, kind
 		if err := h.assertSystemPermLocked(ctx, userID, req.ID); err != nil {
 			return err
 		}
+		if err := h.assertCanGrantPermission(ctx, by, req.ID); err != nil {
+			return err
+		}
 	}
 	if kind == "groups" {
 		// Joining a group that confers admin/super_admin must clear the same
@@ -399,7 +448,7 @@ func (h *Handlers) mutateAssignment(w http.ResponseWriter, r *http.Request, kind
 		return h.Audit.Write(ctx, tx, audit.Event{Action: "iam.user.grant." + kind, TargetType: "user", TargetID: userID.String(), Metadata: map[string]any{"target": req.ID.String()}})
 	})
 	if err != nil {
-		return err
+		return mapWriteError(err)
 	}
 	h.afterPermChange(ctx, userID)
 	httpx.NoContent(w)
@@ -437,6 +486,9 @@ func (h *Handlers) mutateAssignmentPath(w http.ResponseWriter, r *http.Request, 
 		if err := h.assertSystemPermLocked(ctx, userID, target); err != nil {
 			return err
 		}
+		if err := h.assertCanGrantPermission(ctx, actor, target); err != nil {
+			return err
+		}
 	}
 	if param == "groupID" {
 		// Leaving/removing from a privileged group is equivalent to revoking
@@ -449,10 +501,17 @@ func (h *Handlers) mutateAssignmentPath(w http.ResponseWriter, r *http.Request, 
 		if err := fn(ctx, tx, userID, target); err != nil {
 			return err
 		}
+		// Removing a role/group binding may strip the last super-admin (directly
+		// or via a privileged group) — verify one remains, atomically.
+		if param == "roleID" || param == "groupID" {
+			if err := h.ensureSuperAdminSurvivesTx(ctx, tx); err != nil {
+				return err
+			}
+		}
 		return h.Audit.Write(ctx, tx, audit.Event{Action: "iam.user.revoke." + param, TargetType: "user", TargetID: userID.String(), Metadata: map[string]any{"target": target.String()}})
 	})
 	if err != nil {
-		return err
+		return mapWriteError(err)
 	}
 	h.afterPermChange(ctx, userID)
 	httpx.NoContent(w)

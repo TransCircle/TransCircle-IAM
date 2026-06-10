@@ -42,6 +42,9 @@ func (wr *Writer) List(ctx context.Context, f Filter) ([]Entry, error) {
 	if f.Limit <= 0 || f.Limit > 200 {
 		f.Limit = 50
 	}
+	if f.Offset < 0 {
+		f.Offset = 0
+	}
 	// Resolve a human-readable target label at query time: prefer the label stored
 	// on the event, otherwise look the object up by its target_id so the UI never
 	// has to show a bare internal id. The filtered page is materialized first (CTE)

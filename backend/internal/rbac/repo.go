@@ -14,6 +14,12 @@ import (
 // ErrNotFound is returned when a row does not exist.
 var ErrNotFound = errors.New("rbac: not found")
 
+// ErrCrossAppPermission is returned when a role and permission belong to
+// different applications. Exported as a sentinel so handlers can map it to a 400
+// without swallowing the pgx error chain (which would defeat the SERIALIZABLE
+// 40001 retry).
+var ErrCrossAppPermission = errors.New("rbac: permission and role must belong to the same application")
+
 // Repo is a stateless data-access layer; every method takes a store.DBTX so it
 // runs inside or outside a transaction.
 type Repo struct{}

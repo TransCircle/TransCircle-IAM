@@ -52,6 +52,8 @@ func (h *Handlers) SessionMiddleware(next http.Handler) http.Handler {
 			Username:     user.Username,
 			AAL:          sess.AAL,
 			MFASatisfied: sess.MFASatisfied,
+			AuthAt:       sess.CreatedAt,
+			AMR:          sess.AMR,
 		}
 		if sess.MFAAt != nil {
 			p.MFAAt = *sess.MFAAt
