@@ -2,72 +2,85 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ------------------------------------------------------------------
+   TransCircle IAM — “墨青台账” (Verdigris Ledger)
+   A precision security-console aesthetic: warm paper / deep ink,
+   a single verdigris accent, monospace data, hairline borders,
+   corner-bracket framing. No gradients-on-white, no glassmorphism.
+   ------------------------------------------------------------------ */
+
 :root {
-  /* Brand: deep indigo → violet → fuchsia, a memorable identity. */
-  --brand-1: 245 80% 60%;
-  --brand-2: 268 83% 62%;
-  --brand-3: 320 80% 62%;
+  /* 纸面 (light): warm bone paper + teal-black ink */
+  --background: 42 32% 95%;
+  --foreground: 192 30% 11%;
+  --card: 40 36% 99%;
+  --card-foreground: 192 30% 11%;
+  --popover: 40 36% 99%;
 
-  --background: 240 30% 99%;
-  --foreground: 240 20% 14%;
-  --card: 0 0% 100%;
-  --card-foreground: 240 20% 14%;
-  --popover: 0 0% 100%;
+  --primary: 174 100% 21%;
+  --primary-foreground: 40 36% 98%;
+  --secondary: 166 16% 89%;
+  --secondary-foreground: 174 55% 16%;
+  --muted: 43 18% 90%;
+  --muted-foreground: 190 9% 40%;
+  --accent: 168 36% 89%;
+  --accent-foreground: 174 85% 17%;
 
-  --primary: 250 84% 60%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 245 30% 96%;
-  --secondary-foreground: 245 30% 24%;
-  --muted: 240 20% 96%;
-  --muted-foreground: 240 8% 46%;
-  --accent: 250 84% 96%;
-  --accent-foreground: 250 70% 42%;
+  --success: 161 85% 27%;
+  --warning: 30 95% 41%;
+  --info: 202 90% 36%;
+  --destructive: 5 74% 44%;
+  --destructive-foreground: 40 36% 98%;
 
-  --success: 158 64% 40%;
-  --warning: 35 92% 50%;
-  --info: 217 91% 56%;
-  --destructive: 0 72% 51%;
-  --destructive-foreground: 0 0% 100%;
+  --border: 44 14% 83%;
+  --input: 44 13% 76%;
+  --ring: 174 100% 26%;
+  --radius: 0.375rem;
 
-  --border: 240 18% 90%;
-  --input: 240 18% 88%;
-  --ring: 250 84% 60%;
-  --radius: 0.85rem;
+  /* the chrome (sidebar/header) is always ink, in both themes */
+  --chrome: 192 28% 10%;
+  --chrome-foreground: 42 20% 86%;
+  --chrome-muted: 188 8% 56%;
+  --chrome-border: 190 16% 18%;
+  --chrome-accent: 168 62% 56%;
 
-  --glass: 0 0% 100% / 0.7;
+  --glass: 40 36% 98% / 0.86;
 }
 
 .dark {
-  --brand-1: 245 80% 66%;
-  --brand-2: 268 83% 68%;
-  --brand-3: 320 80% 66%;
+  /* 墨面 (dark): green-black ink + bone text */
+  --background: 192 26% 7%;
+  --foreground: 42 22% 88%;
+  --card: 192 21% 10%;
+  --card-foreground: 42 22% 88%;
+  --popover: 192 22% 11%;
 
-  --background: 246 32% 7%;
-  --foreground: 240 16% 92%;
-  --card: 245 26% 11%;
-  --card-foreground: 240 16% 92%;
-  --popover: 245 26% 12%;
+  --primary: 168 62% 50%;
+  --primary-foreground: 192 30% 7%;
+  --secondary: 190 14% 16%;
+  --secondary-foreground: 42 22% 88%;
+  --muted: 192 15% 13%;
+  --muted-foreground: 184 8% 58%;
+  --accent: 172 32% 16%;
+  --accent-foreground: 165 58% 70%;
 
-  --primary: 252 90% 70%;
-  --primary-foreground: 246 47% 10%;
-  --secondary: 245 20% 18%;
-  --secondary-foreground: 240 16% 92%;
-  --muted: 245 20% 16%;
-  --muted-foreground: 240 10% 62%;
-  --accent: 250 40% 24%;
-  --accent-foreground: 250 90% 88%;
+  --success: 160 58% 47%;
+  --warning: 38 92% 55%;
+  --info: 202 88% 62%;
+  --destructive: 4 70% 56%;
+  --destructive-foreground: 42 22% 92%;
 
-  --success: 158 56% 50%;
-  --warning: 35 92% 60%;
-  --info: 217 91% 64%;
-  --destructive: 0 64% 58%;
-  --destructive-foreground: 0 0% 100%;
+  --border: 190 13% 18%;
+  --input: 190 13% 24%;
+  --ring: 168 62% 50%;
 
-  --border: 245 18% 22%;
-  --input: 245 18% 26%;
-  --ring: 252 90% 70%;
+  --chrome: 192 28% 6%;
+  --chrome-foreground: 42 20% 86%;
+  --chrome-muted: 188 8% 52%;
+  --chrome-border: 190 16% 14%;
+  --chrome-accent: 168 62% 56%;
 
-  --glass: 245 26% 13% / 0.6;
+  --glass: 192 21% 10% / 0.82;
 }
 
 * {
@@ -84,41 +97,108 @@ body {
   margin: 0;
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
-  font-family: "Inter", "Inter var", -apple-system, BlinkMacSystemFont, "Segoe UI",
-    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  font-size: 15px;
+  font-family: "IBM Plex Sans", -apple-system, "PingFang SC", "Hiragino Sans GB",
+    "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  font-size: 14.5px;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  font-feature-settings: "tnum";
+}
+
+::selection {
+  background: hsl(var(--primary) / 0.18);
 }
 
 * {
   scrollbar-width: thin;
   scrollbar-color: hsl(var(--border)) transparent;
 }
-*::-webkit-scrollbar { width: 9px; height: 9px; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
 *::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 9999px; }
 *::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.5); }
 
 @layer components {
-  /* Signature brand gradient + a frosted-glass panel. */
+  /* Brand mark fill: deep verdigris → teal ink. Used by the logo tile and
+     avatar fallbacks; intentionally dark and saturated, never pastel. */
   .brand-gradient {
-    background-image: linear-gradient(
-      135deg,
-      hsl(var(--brand-1)),
-      hsl(var(--brand-2)) 50%,
-      hsl(var(--brand-3))
-    );
+    background-image: linear-gradient(140deg, hsl(174 90% 26%), hsl(190 70% 22%) 60%, hsl(200 55% 18%));
+  }
+  .dark .brand-gradient {
+    background-image: linear-gradient(140deg, hsl(170 65% 40%), hsl(186 60% 30%) 60%, hsl(198 50% 24%));
   }
   .brand-text {
-    background-image: linear-gradient(135deg, hsl(var(--brand-1)), hsl(var(--brand-3)));
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    color: hsl(var(--primary));
   }
   .glass {
     background-color: hsl(var(--glass));
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  /* Signature: corner-bracket “audit frame”. Pure background-image so the
+     element keeps its own background-color underneath. */
+  .bracket-frame {
+    --tick: hsl(var(--primary) / 0.6);
+    --tick-len: 14px;
+    --tick-w: 2px;
+    background-image:
+      linear-gradient(var(--tick), var(--tick)),
+      linear-gradient(var(--tick), var(--tick)),
+      linear-gradient(var(--tick), var(--tick)),
+      linear-gradient(var(--tick), var(--tick)),
+      linear-gradient(var(--tick), var(--tick)),
+      linear-gradient(var(--tick), var(--tick)),
+      linear-gradient(var(--tick), var(--tick)),
+      linear-gradient(var(--tick), var(--tick));
+    background-position: top left, top left, top right, top right,
+      bottom left, bottom left, bottom right, bottom right;
+    background-size:
+      var(--tick-len) var(--tick-w), var(--tick-w) var(--tick-len),
+      var(--tick-len) var(--tick-w), var(--tick-w) var(--tick-len),
+      var(--tick-len) var(--tick-w), var(--tick-w) var(--tick-len),
+      var(--tick-len) var(--tick-w), var(--tick-w) var(--tick-len);
+    background-repeat: no-repeat;
+  }
+
+  /* Blueprint micro-grid backdrop for entry pages and the app shell. */
+  .bg-grid {
+    background-image:
+      linear-gradient(hsl(var(--foreground) / 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--foreground) / 0.04) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+  .bg-grid-chrome {
+    background-image:
+      linear-gradient(hsl(var(--chrome-foreground) / 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--chrome-foreground) / 0.045) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+
+  /* Uppercase monospace micro-label — section headers, table heads, badges. */
+  .mono-label {
+    font-family: theme(fontFamily.mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  /* Live status dot (e.g. current session). */
+  .status-dot {
+    position: relative;
+    display: inline-block;
+    height: 7px;
+    width: 7px;
+    border-radius: 9999px;
+    background: hsl(var(--success));
+  }
+  .status-dot::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 9999px;
+    border: 1px solid hsl(var(--success) / 0.5);
+    animation: ping-soft 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;
   }
 
   /* DataTable: collapse to stacked, labelled cards on narrow screens. */
@@ -149,19 +229,30 @@ body {
 
 @layer utilities {
   @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-  @keyframes zoom-in { from { opacity: 0; transform: translateY(8px) scale(0.97); } to { opacity: 1; transform: none; } }
+  @keyframes zoom-in { from { opacity: 0; transform: translateY(8px) scale(0.985); } to { opacity: 1; transform: none; } }
   @keyframes slide-in-right { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
   @keyframes slide-in-left { from { transform: translateX(-100%); } to { transform: none; } }
-  @keyframes pop-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: none; } }
+  @keyframes pop-in { from { opacity: 0; transform: translateY(-4px) scale(0.99); } to { opacity: 1; transform: none; } }
   @keyframes shimmer { 100% { transform: translateX(100%); } }
-  @keyframes float-slow { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
+  @keyframes ping-soft { 0% { transform: scale(0.7); opacity: 1; } 80%, 100% { transform: scale(1.6); opacity: 0; } }
+  @keyframes reveal-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 
   .animate-fade-in { animation: fade-in 0.18s ease-out; }
   .animate-zoom-in { animation: zoom-in 0.22s cubic-bezier(0.16, 1, 0.3, 1); }
   .animate-slide-in-right { animation: slide-in-right 0.26s cubic-bezier(0.16, 1, 0.3, 1); }
   .animate-slide-in-left { animation: slide-in-left 0.26s cubic-bezier(0.16, 1, 0.3, 1); }
   .animate-pop-in { animation: pop-in 0.14s ease-out; }
-  .animate-float-slow { animation: float-slow 9s ease-in-out infinite; }
+
+  /* Staggered page-load reveal: wrap a page in .stagger and its direct
+     children fade-rise in sequence. */
+  .stagger > * { animation: reveal-up 0.45s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .stagger > *:nth-child(1) { animation-delay: 0ms; }
+  .stagger > *:nth-child(2) { animation-delay: 50ms; }
+  .stagger > *:nth-child(3) { animation-delay: 100ms; }
+  .stagger > *:nth-child(4) { animation-delay: 150ms; }
+  .stagger > *:nth-child(5) { animation-delay: 200ms; }
+  .stagger > *:nth-child(6) { animation-delay: 250ms; }
+  .stagger > *:nth-child(n + 7) { animation-delay: 300ms; }
 
   @media (prefers-reduced-motion: reduce) {
     * { animation: none !important; transition: none !important; }

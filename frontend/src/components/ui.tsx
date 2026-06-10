@@ -1,23 +1,25 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { cva, type VariantProps } from "class-variance-authority";
-import { Check, ChevronDown, HelpCircle, Copy, Eye, EyeOff } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, HelpCircle, Copy, Eye, EyeOff } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { zhCN } from "date-fns/locale";
-import { cn } from "@/lib/utils";
+import { cn, copyText } from "@/lib/utils";
 
 /* ----------------------------- Button ----------------------------- */
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98]",
+  "inline-flex select-none items-center justify-center gap-2 rounded-md text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 active:translate-y-px",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm",
+        default:
+          "bg-primary text-primary-foreground shadow-[inset_0_1px_0_hsl(0_0%_100%/0.12)] hover:bg-primary/90",
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/70",
-        outline: "border border-input bg-card hover:bg-accent hover:text-accent-foreground",
+        outline: "border border-input bg-card hover:border-primary/50 hover:text-accent-foreground",
         ghost: "hover:bg-accent hover:text-accent-foreground",
-        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm",
+        destructive:
+          "bg-destructive text-destructive-foreground shadow-[inset_0_1px_0_hsl(0_0%_100%/0.12)] hover:bg-destructive/90",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
@@ -59,7 +61,7 @@ export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttribute
     <input
       ref={ref}
       className={cn(
-        "flex h-10 w-full rounded-lg border border-input bg-card px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+        "flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm transition-shadow placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-primary/60 focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-50",
         className
       )}
       {...props}
@@ -95,7 +97,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTML
     <textarea
       ref={ref}
       className={cn(
-        "flex min-h-[80px] w-full rounded-lg border border-input bg-card px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "flex min-h-[80px] w-full rounded-md border border-input bg-card px-3 py-2 text-sm transition-shadow focus-visible:outline-none focus-visible:border-primary/60 focus-visible:ring-2 focus-visible:ring-ring/30",
         className
       )}
       {...props}
@@ -106,7 +108,7 @@ Textarea.displayName = "Textarea";
 
 export function Label({ className, children, ...props }: React.LabelHTMLAttributes<HTMLLabelElement>) {
   return (
-    <label className={cn("text-sm font-medium leading-none text-foreground", className)} {...props}>
+    <label className={cn("text-[13px] font-medium leading-none text-foreground", className)} {...props}>
       {children}
     </label>
   );
@@ -138,19 +140,27 @@ export function Field({
 /* ----------------------------- Card ----------------------------- */
 
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("rounded-xl border bg-card text-card-foreground shadow-sm", className)} {...props} />;
+  return (
+    <div
+      className={cn(
+        "rounded-lg border bg-card text-card-foreground shadow-[0_1px_2px_hsl(var(--foreground)/0.04)]",
+        className
+      )}
+      {...props}
+    />
+  );
 }
 export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("flex flex-col space-y-1.5 p-6", className)} {...props} />;
+  return <div className={cn("flex flex-col space-y-1 p-5", className)} {...props} />;
 }
 export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-  return <h3 className={cn("text-base font-semibold leading-none tracking-tight", className)} {...props} />;
+  return <h3 className={cn("text-[15px] font-semibold leading-snug tracking-tight", className)} {...props} />;
 }
 export function CardDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
-  return <p className={cn("text-sm text-muted-foreground", className)} {...props} />;
+  return <p className={cn("text-[13px] text-muted-foreground", className)} {...props} />;
 }
 export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("p-6 pt-0", className)} {...props} />;
+  return <div className={cn("p-5 pt-0", className)} {...props} />;
 }
 
 /* ----------------------------- Badge ----------------------------- */
@@ -161,15 +171,19 @@ export function Badge({
   ...props
 }: React.HTMLAttributes<HTMLSpanElement> & { variant?: "default" | "success" | "muted" | "destructive" | "warning" }) {
   const variants: Record<string, string> = {
-    default: "bg-primary/10 text-primary",
-    success: "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400",
-    warning: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-    muted: "bg-muted text-muted-foreground",
-    destructive: "bg-destructive/12 text-destructive",
+    default: "border-primary/25 bg-primary/8 text-primary",
+    success: "border-success/30 bg-success/8 text-success",
+    warning: "border-warning/35 bg-warning/10 text-warning",
+    muted: "border-border bg-muted text-muted-foreground",
+    destructive: "border-destructive/30 bg-destructive/8 text-destructive",
   };
   return (
     <span
-      className={cn("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium", variants[variant], className)}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 font-mono text-[11px] font-medium leading-none",
+        variants[variant],
+        className
+      )}
       {...props}
     />
   );
@@ -298,7 +312,7 @@ export function Select({
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         onKeyDown={onKeyDown}
-        className="flex h-10 w-full items-center justify-between rounded-lg border border-input bg-card px-3 text-sm shadow-sm transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+        className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-card px-3 text-sm transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:border-primary/60 focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-50"
       >
         <span className={cn("truncate", !selected && "text-muted-foreground")}>
           {selected ? selected.label : placeholder}
@@ -311,7 +325,7 @@ export function Select({
             ref={menuRef}
             role="listbox"
             style={{ position: "fixed", left: box.left, width: box.width, top: box.top, bottom: box.bottom, maxHeight: box.maxH }}
-            className="z-[70] animate-pop-in overflow-auto rounded-lg border bg-card p-1 shadow-lg"
+            className="z-[70] animate-pop-in overflow-auto rounded-md border bg-popover p-1 shadow-xl shadow-black/10"
           >
             {options.length === 0 && <div className="px-3 py-2 text-sm text-muted-foreground">无选项</div>}
             {options.map((o, i) => (
@@ -324,9 +338,9 @@ export function Select({
                 onMouseEnter={() => setActive(i)}
                 onClick={() => choose(o.value)}
                 className={cn(
-                  "flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors",
-                  i === active && "bg-accent",
-                  o.value === value && "font-medium text-accent-foreground"
+                  "flex w-full items-center justify-between rounded-sm px-3 py-2 text-left text-sm transition-colors",
+                  i === active && "bg-accent text-accent-foreground",
+                  o.value === value && "font-medium"
                 )}
               >
                 <span className="truncate">{o.label}</span>
@@ -361,7 +375,7 @@ export function Checkbox({
       disabled={disabled}
       onClick={() => onCheckedChange?.(!checked)}
       className={cn(
-        "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+        "flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-sm border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
         checked ? "border-primary bg-primary text-primary-foreground" : "border-input bg-card hover:border-primary/60",
         className
       )}
@@ -379,7 +393,7 @@ const avatarSizes = {
   lg: "h-16 w-16 text-xl",
 };
 
-// Avatar shows the user's uploaded image, or a brand-gradient circle with the
+// Avatar shows the user's uploaded image, or a brand-ink square with the
 // first letter of their name as a fallback (also used while an image 404s).
 export function Avatar({
   src,
@@ -399,7 +413,7 @@ export function Avatar({
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 select-none items-center justify-center overflow-hidden rounded-full brand-gradient font-semibold text-white",
+        "inline-flex shrink-0 select-none items-center justify-center overflow-hidden rounded-md brand-gradient font-mono font-semibold text-white",
         avatarSizes[size],
         className
       )}
@@ -445,15 +459,15 @@ export function CheckRow({
         disabled={inert}
         onClick={() => onToggle(!checked)}
         className={cn(
-          "flex w-full items-center gap-2.5 rounded-lg border p-2.5 text-left text-sm transition-colors",
+          "flex w-full items-center gap-2.5 rounded-md border p-2.5 text-left text-sm transition-colors",
           locked && lockedHint && "pr-9",
-          inert ? "cursor-not-allowed opacity-60" : "hover:bg-accent/40",
+          inert ? "cursor-not-allowed opacity-60" : "hover:border-primary/40",
           checked && !inert ? "border-primary/50 bg-primary/5" : "border-input"
         )}
       >
         <span
           className={cn(
-            "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors",
+            "flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-sm border transition-colors",
             checked ? "border-primary bg-primary text-primary-foreground" : "border-input bg-card"
           )}
         >
@@ -489,14 +503,14 @@ export function Switch({
       disabled={disabled}
       onClick={() => onCheckedChange?.(!checked)}
       className={cn(
-        "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
-        checked ? "bg-primary" : "bg-input"
+        "relative inline-flex h-[22px] w-10 shrink-0 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+        checked ? "border-primary bg-primary" : "border-input bg-muted"
       )}
     >
       <span
         className={cn(
-          "inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform",
-          checked ? "translate-x-5" : "translate-x-0.5"
+          "inline-block h-4 w-4 transform rounded-full bg-card shadow transition-transform",
+          checked ? "translate-x-[19px] bg-primary-foreground" : "translate-x-0.5"
         )}
       />
     </button>
@@ -522,7 +536,7 @@ export function Help({ text, className }: { text: string; className?: string }) 
         <HelpCircle className="h-3.5 w-3.5" />
       </button>
       {open && (
-        <span className="absolute bottom-full left-1/2 z-50 mb-1.5 w-56 -translate-x-1/2 animate-fade-in rounded-lg border bg-card px-3 py-2 text-xs font-normal leading-relaxed text-muted-foreground shadow-lg">
+        <span className="absolute bottom-full left-1/2 z-50 mb-1.5 w-56 -translate-x-1/2 animate-fade-in rounded-md border bg-popover px-3 py-2 text-xs font-normal leading-relaxed text-muted-foreground shadow-lg">
           {text}
         </span>
       )}
@@ -544,15 +558,17 @@ export function Tabs({
   className?: string;
 }) {
   return (
-    <div className={cn("inline-flex gap-1 rounded-xl bg-muted p-1", className)}>
+    <div className={cn("flex gap-5 border-b", className)}>
       {tabs.map((t) => (
         <button
           key={t.value}
           type="button"
           onClick={() => onValueChange(t.value)}
           className={cn(
-            "rounded-lg px-4 py-1.5 text-sm font-medium transition-all",
-            value === t.value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            "-mb-px border-b-2 px-0.5 pb-2 text-sm font-medium transition-colors",
+            value === t.value
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
           )}
         >
           {t.label}
@@ -575,22 +591,23 @@ export function Skeleton({ className }: { className?: string }) {
 /* ----------------------------- CopyButton ----------------------------- */
 
 export function CopyButton({ value, className, label }: { value: string; className?: string; label?: string }) {
-  const [copied, setCopied] = React.useState(false);
+  const [state, setState] = React.useState<"idle" | "copied" | "failed">("idle");
   return (
     <button
       type="button"
-      onClick={() => {
-        navigator.clipboard?.writeText(value);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
+      onClick={async () => {
+        const ok = await copyText(value);
+        setState(ok ? "copied" : "failed");
+        setTimeout(() => setState("idle"), ok ? 1500 : 3000);
       }}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+        "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground",
+        state === "failed" && "border-destructive/50 text-destructive",
         className
       )}
     >
-      {copied ? <Check className="h-3.5 w-3.5 text-[hsl(var(--success))]" /> : <Copy className="h-3.5 w-3.5" />}
-      {label ?? (copied ? "已复制" : "复制")}
+      {state === "copied" ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+      {state === "failed" ? "复制失败，请手动复制" : state === "copied" ? "已复制" : (label ?? "复制")}
     </button>
   );
 }
@@ -600,6 +617,7 @@ export function CopyButton({ value, className, label }: { value: string; classNa
 export function RelativeTime({ value }: { value?: string | null }) {
   if (!value) return <span className="text-muted-foreground">—</span>;
   const d = new Date(value);
+  if (isNaN(d.getTime())) return <span className="text-muted-foreground">—</span>;
   let rel = "";
   try {
     rel = formatDistanceToNow(d, { addSuffix: true, locale: zhCN });
@@ -621,18 +639,74 @@ export function PageHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+    <div className="mb-6 flex flex-col gap-3 border-b pb-5 sm:flex-row sm:items-end sm:justify-between">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2.5">
+          <span aria-hidden className="h-4 w-1 rounded-full bg-primary" />
+          <h1 className="truncate text-xl font-semibold tracking-tight">{title}</h1>
+        </div>
+        {description && <p className="mt-1.5 text-[13px] text-muted-foreground">{description}</p>}
       </div>
       {action && <div className="shrink-0">{action}</div>}
     </div>
   );
 }
 
+/* ----------------------------- Pager ----------------------------- */
+
+// useDebounced delays propagating a fast-changing value (search input) so each
+// keystroke doesn't fire a request and blank the table.
+export function useDebounced<T>(value: T, delay = 300): T {
+  const [v, setV] = React.useState(value);
+  React.useEffect(() => {
+    const t = setTimeout(() => setV(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return v;
+}
+
+// Offset pagination. Pass `total` when the API reports it; otherwise pass
+// `hasMore` (e.g. a full page implies more) and the label degrades gracefully.
+export function Pager({
+  offset,
+  limit,
+  count,
+  total,
+  hasMore,
+  onOffsetChange,
+}: {
+  offset: number;
+  limit: number;
+  count: number; // rows on the current page
+  total?: number;
+  hasMore?: boolean;
+  onOffsetChange: (next: number) => void;
+}) {
+  const more = total !== undefined ? offset + count < total : !!hasMore;
+  if (offset === 0 && !more) return null;
+  return (
+    <div className="mt-3 flex items-center justify-between">
+      <span className="font-mono text-xs text-muted-foreground">
+        {count > 0 ? `${offset + 1}–${offset + count}` : "0"}
+        {total !== undefined ? ` / ${total}` : ""}
+      </span>
+      <div className="flex gap-1.5">
+        <Button variant="outline" size="sm" disabled={offset === 0} onClick={() => onOffsetChange(Math.max(0, offset - limit))}>
+          <ChevronLeft className="h-3.5 w-3.5" /> 上一页
+        </Button>
+        <Button variant="outline" size="sm" disabled={!more} onClick={() => onOffsetChange(offset + limit)}>
+          下一页 <ChevronRight className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function EmptyState({ message }: { message: string }) {
   return (
-    <div className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">{message}</div>
+    <div className="bracket-frame rounded-lg border border-dashed bg-card/50 p-10 text-center">
+      <div className="mono-label text-muted-foreground/60">no data</div>
+      <div className="mt-1.5 text-sm text-muted-foreground">{message}</div>
+    </div>
   );
 }

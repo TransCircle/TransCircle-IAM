@@ -158,15 +158,26 @@ export function GroupDetailPage() {
     }));
   };
 
-  if (detail.isLoading || !meta) {
+  // Order matters: on a fetch error `meta` never gets set, so the error check
+  // must run BEFORE the loading check or this page spins forever.
+  if (detail.isError) {
+    return (
+      <div className="bracket-frame rounded-lg border border-dashed bg-card/50 p-10 text-center text-sm text-muted-foreground">
+        身份组不存在或加载失败。
+        <div className="mt-3">
+          <Button variant="outline" size="sm" onClick={() => navigate("/admin/groups")}>
+            返回身份组列表
+          </Button>
+        </div>
+      </div>
+    );
+  }
+  if (detail.isLoading || !meta || !detail.data) {
     return (
       <div className="flex justify-center p-10">
         <Spinner className="h-6 w-6" />
       </div>
     );
-  }
-  if (detail.isError || !detail.data) {
-    return <div className="text-sm text-destructive">身份组不存在或加载失败。</div>;
   }
   const g = detail.data.group;
   const roleIds = new Set(detail.data.role_ids ?? []);

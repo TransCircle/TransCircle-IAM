@@ -27,11 +27,20 @@ export function resolveStepUp() {
   q.forEach((p) => p.resolve());
 }
 
+// A user-initiated cancel of the step-up dialog — callers should treat this
+// as "do nothing", not as a network failure.
+export class StepUpCancelledError extends Error {
+  code = "step_up_cancelled" as const;
+  constructor() {
+    super("已取消二次验证");
+  }
+}
+
 export function cancelStepUp() {
   const q = queue;
   queue = [];
   emit(false);
-  q.forEach((p) => p.reject(new Error("step-up cancelled")));
+  q.forEach((p) => p.reject(new StepUpCancelledError()));
 }
 
 export function subscribeStepUp(l: (open: boolean) => void): () => void {

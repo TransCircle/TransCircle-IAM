@@ -28,5 +28,34 @@ export function safeReturnPath(raw: string | null | undefined): string | null {
 export function formatDate(value?: string | null): string {
   if (!value) return "—";
   const d = new Date(value);
+  if (isNaN(d.getTime())) return "—";
   return d.toLocaleString("zh-CN", { hour12: false });
+}
+
+// copyText writes to the clipboard and reports whether it actually worked.
+// navigator.clipboard is undefined on non-HTTPS origins, so fall back to the
+// legacy execCommand path; never report success for a silent failure.
+export async function copyText(value: string): Promise<boolean> {
+  if (navigator.clipboard) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      /* fall through to legacy path */
+    }
+  }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = value;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
 }

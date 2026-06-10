@@ -20,6 +20,11 @@ export function GroupsPage() {
   const [confirm, setConfirm] = React.useState<Group | null>(null);
   const [form, setForm] = React.useState({ key: "", display_name: "", description: "" });
 
+  // Reset the draft on close so a cancelled form doesn't reappear next time.
+  React.useEffect(() => {
+    if (!open) setForm({ key: "", display_name: "", description: "" });
+  }, [open]);
+
   const groups = useQuery<Group[]>({
     queryKey: ["groups"],
     queryFn: async () => (await api.get("/api/v1/admin/groups")).data.groups ?? [],
@@ -80,7 +85,7 @@ export function GroupsPage() {
         ]}
       />
 
-      <Dialog open={open} onClose={() => setOpen(false)} title="新建身份组" onSubmit={submitCreate}
+      <Dialog open={open} onClose={() => setOpen(false)} title="新建身份组" onSubmit={submitCreate} submitting={create.isPending}
         footer={<><Button variant="outline" type="button" onClick={() => setOpen(false)}>取消</Button><Button type="submit" loading={create.isPending}>创建</Button></>}>
         <div className="space-y-4">
           <Field label="Key"><Input value={form.key} autoFocus onChange={(e) => setForm({ ...form, key: e.target.value })} /></Field>

@@ -255,17 +255,22 @@ function TOTPDialog({ open, onClose, onDone }: { open: boolean; onClose: () => v
   const [code, setCode] = React.useState("");
   const [loading, setLoading] = React.useState(false);
 
+  const began = React.useRef(false);
   React.useEffect(() => {
-    if (open && !otpauth) {
+    // Ref-guarded so StrictMode's double effect doesn't enroll two tickets.
+    if (open && !began.current) {
+      began.current = true;
       api.post("/api/v1/auth/mfa/totp/enroll/begin").then((r) => setOtpauth(r.data.otpauth_url)).catch((e) => toast(errorMessage(e), "error"));
     }
     if (!open) {
+      began.current = false;
       setOtpauth("");
       setCode("");
     }
   }, [open]); // eslint-disable-line
 
   async function confirm() {
+    if (loading) return;
     setLoading(true);
     try {
       await api.post("/api/v1/auth/mfa/totp/enroll/finish", { code });
@@ -313,6 +318,7 @@ function ChangePasswordCard() {
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (change.isPending) return;
     if (next.length < 12) return toast("新密码至少需要 12 个字符", "error");
     if (next !== confirm) return toast("两次输入的新密码不一致", "error");
     change.mutate();

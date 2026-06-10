@@ -19,6 +19,11 @@ export function ApplicationsPage() {
   const [confirm, setConfirm] = React.useState<Application | null>(null);
   const [form, setForm] = React.useState({ key: "", display_name: "", description: "" });
 
+  // Reset the draft on close so a cancelled form doesn't reappear next time.
+  React.useEffect(() => {
+    if (!open) setForm({ key: "", display_name: "", description: "" });
+  }, [open]);
+
   const apps = useQuery<Application[]>({
     queryKey: ["applications"],
     queryFn: async () => (await api.get("/api/v1/admin/applications")).data.applications ?? [],

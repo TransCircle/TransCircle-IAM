@@ -12,6 +12,8 @@ export function Dialog({
   footer,
   className,
   onSubmit,
+  submitting,
+  lockClose,
 }: {
   open: boolean;
   onClose: () => void;
@@ -23,9 +25,15 @@ export function Dialog({
   // When provided, the body + footer are wrapped in a <form>, so pressing Enter
   // in any field submits (footer's primary button must be type="submit").
   onSubmit?: () => void;
+  // While true, repeated form submits (double Enter) are ignored.
+  submitting?: boolean;
+  // One-time secrets: disable Escape / backdrop / X close so a stray click
+  // can't discard the only copy — closing must go through an explicit button.
+  lockClose?: boolean;
 }) {
   const [render, setRender] = React.useState(open);
   const [show, setShow] = React.useState(false);
+  const panelRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     if (open) {
@@ -40,49 +48,65 @@ export function Dialog({
 
   React.useEffect(() => {
     if (!open) return;
+    // Focus the first focusable control inside the panel so keyboard users
+    // land in the dialog (and Escape works without clicking first).
+    const t = setTimeout(() => {
+      const el = panelRef.current?.querySelector<HTMLElement>(
+        'input, select, textarea, button:not([aria-label="关闭"])'
+      );
+      (el ?? panelRef.current)?.focus();
+    }, 50);
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !lockClose) onClose();
     }
     window.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
+      clearTimeout(t);
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
-  }, [open, onClose]);
+  }, [open, onClose, lockClose]);
 
   if (!render) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
         className={cn(
-          "absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity duration-200",
+          "absolute inset-0 bg-[hsl(192_30%_6%/0.55)] transition-opacity duration-200",
           show ? "opacity-100" : "opacity-0"
         )}
-        onClick={onClose}
+        onClick={lockClose ? undefined : onClose}
       />
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
         className={cn(
-          "relative z-10 max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-2xl border bg-card p-6 shadow-2xl transition-all duration-200",
-          show ? "translate-y-0 scale-100 opacity-100" : "translate-y-3 scale-[0.97] opacity-0",
+          "bracket-frame relative z-10 max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-lg border bg-card p-6 shadow-2xl shadow-black/25 outline-none transition-all duration-200",
+          show ? "translate-y-0 scale-100 opacity-100" : "translate-y-3 scale-[0.98] opacity-0",
           className
         )}
       >
-        <button
-          onClick={onClose}
-          className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          aria-label="关闭"
-        >
-          <X className="h-4 w-4" />
-        </button>
-        <h2 className="pr-6 text-lg font-semibold tracking-tight">{title}</h2>
-        {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+        {!lockClose && (
+          <button
+            onClick={onClose}
+            className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            aria-label="关闭"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+        <h2 className="pr-6 text-base font-semibold tracking-tight">{title}</h2>
+        {description && <p className="mt-1 text-[13px] text-muted-foreground">{description}</p>}
         {onSubmit ? (
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              onSubmit();
+              if (!submitting) onSubmit();
             }}
           >
             <div className="mt-4">{children}</div>
@@ -145,7 +169,7 @@ export function ConfirmDialog({
       }
     >
       {destructive && (
-        <div className="flex items-start gap-3 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+        <div className="flex items-start gap-3 rounded-md border border-destructive/30 bg-destructive/8 p-3 text-sm text-destructive">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>此操作不可撤销，请确认后继续。</span>
         </div>

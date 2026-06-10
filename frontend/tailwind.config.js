@@ -4,6 +4,25 @@ export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
+      fontFamily: {
+        sans: [
+          '"IBM Plex Sans"',
+          "-apple-system",
+          '"PingFang SC"',
+          '"Hiragino Sans GB"',
+          '"Noto Sans SC"',
+          '"Microsoft YaHei"',
+          "sans-serif",
+        ],
+        mono: [
+          '"IBM Plex Mono"',
+          "ui-monospace",
+          "SFMono-Regular",
+          "Consolas",
+          '"PingFang SC"',
+          "monospace",
+        ],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -30,9 +49,19 @@ export default {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
         },
+        success: "hsl(var(--success))",
+        warning: "hsl(var(--warning))",
+        info: "hsl(var(--info))",
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
+        },
+        chrome: {
+          DEFAULT: "hsl(var(--chrome))",
+          foreground: "hsl(var(--chrome-foreground))",
+          muted: "hsl(var(--chrome-muted))",
+          border: "hsl(var(--chrome-border))",
+          accent: "hsl(var(--chrome-accent))",
         },
       },
       borderRadius: {

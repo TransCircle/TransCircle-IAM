@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, errorMessage } from "@/lib/api";
-import { Button, Card, CardContent, CardHeader, CardTitle, Field, Input, PageHeader, Select, Textarea } from "@/components/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, Field, Input, PageHeader, Select, Skeleton, Textarea } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/auth/AuthProvider";
 
@@ -37,10 +37,34 @@ export function SettingsPage() {
     onError: (e) => toast(errorMessage(e), "error"),
   });
 
-  if (!form) return null;
+  if (rp.isError) {
+    return (
+      <div>
+        <PageHeader title="系统设置" description="WebAuthn 依赖方配置与安全策略。" />
+        <div className="bracket-frame rounded-lg border border-dashed bg-card/50 p-10 text-center">
+          <p className="text-sm text-muted-foreground">配置加载失败：{errorMessage(rp.error)}</p>
+          <Button variant="outline" size="sm" className="mt-3" onClick={() => rp.refetch()}>
+            重试
+          </Button>
+        </div>
+      </div>
+    );
+  }
+  if (!form) {
+    return (
+      <div>
+        <PageHeader title="系统设置" description="WebAuthn 依赖方配置与安全策略。" />
+        <div className="max-w-2xl space-y-3">
+          <Skeleton className="h-10" />
+          <Skeleton className="h-10 opacity-80" />
+          <Skeleton className="h-24 opacity-60" />
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div>
+    <div className="stagger">
       <PageHeader title="系统设置" description="WebAuthn 依赖方配置与安全策略。" />
       <Card className="max-w-2xl">
         <CardHeader>
@@ -48,7 +72,13 @@ export function SettingsPage() {
           <p className="text-sm text-muted-foreground">修改 RP ID 会使现有通行密钥失效，请谨慎操作。修改后即时生效。</p>
         </CardHeader>
         <CardContent>
-          <form onSubmit={(e) => { e.preventDefault(); save.mutate(); }} className="space-y-4">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!save.isPending) save.mutate();
+            }}
+            className="space-y-4"
+          >
           <Field label="RP ID" hint="通常是 IAM 的域名，如 iam.transcircle.internal">
             <Input value={form.rp_id} onChange={(e) => setForm({ ...form, rp_id: e.target.value })} disabled={!canWrite} />
           </Field>

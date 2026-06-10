@@ -1,26 +1,33 @@
 import * as React from "react";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, X } from "lucide-react";
 import { Badge, Card, CardContent, CardHeader, CardTitle, PageHeader } from "@/components/ui";
+import { copyText } from "@/lib/utils";
 
 const base = typeof window !== "undefined" ? window.location.origin : "https://iam.example.com";
 
 function Code({ children }: { children: string }) {
-  const [copied, setCopied] = React.useState(false);
+  const [state, setState] = React.useState<"idle" | "copied" | "failed">("idle");
   return (
     <div className="group relative">
-      <pre className="overflow-x-auto rounded-lg border bg-muted/50 p-3 text-xs leading-relaxed">
+      <pre className="overflow-x-auto rounded-lg border bg-muted/50 p-3 font-mono text-xs leading-relaxed">
         <code>{children}</code>
       </pre>
       <button
-        onClick={() => {
-          navigator.clipboard?.writeText(children);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
+        onClick={async () => {
+          const ok = await copyText(children);
+          setState(ok ? "copied" : "failed");
+          setTimeout(() => setState("idle"), 1500);
         }}
         className="absolute right-2 top-2 rounded-md border bg-card p-1.5 text-muted-foreground transition-colors hover:text-foreground"
         aria-label="复制"
       >
-        {copied ? <Check className="h-3.5 w-3.5 text-[hsl(var(--success))]" /> : <Copy className="h-3.5 w-3.5" />}
+        {state === "copied" ? (
+          <Check className="h-3.5 w-3.5 text-success" />
+        ) : state === "failed" ? (
+          <X className="h-3.5 w-3.5 text-destructive" />
+        ) : (
+          <Copy className="h-3.5 w-3.5" />
+        )}
       </button>
     </div>
   );

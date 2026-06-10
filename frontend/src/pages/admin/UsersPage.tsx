@@ -1,9 +1,9 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
-import { Avatar, Badge, Button, CopyButton, Field, Input, PageHeader } from "@/components/ui";
+import { Avatar, Badge, Button, CopyButton, Field, Input, PageHeader, Pager, useDebounced } from "@/components/ui";
 import { DataTable } from "@/components/DataTable";
 import { Dialog } from "@/components/Dialog";
 import { useToast } from "@/components/Toast";
@@ -16,12 +16,19 @@ export function UsersPage() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [search, setSearch] = React.useState("");
+  const [offset, setOffset] = React.useState(0);
   const [open, setOpen] = React.useState(false);
   const [created, setCreated] = React.useState<{ username: string; password: string } | null>(null);
 
+  const limit = 50;
+  const debouncedSearch = useDebounced(search);
+  React.useEffect(() => setOffset(0), [debouncedSearch]);
+
   const { data, isLoading } = useQuery<{ users: User[]; total: number }>({
-    queryKey: ["users", search],
-    queryFn: async () => (await api.get(`/api/v1/admin/users?search=${encodeURIComponent(search)}&limit=50`)).data,
+    queryKey: ["users", debouncedSearch, offset],
+    queryFn: async () =>
+      (await api.get(`/api/v1/admin/users?search=${encodeURIComponent(debouncedSearch)}&limit=${limit}&offset=${offset}`)).data,
+    placeholderData: keepPreviousData,
   });
 
   const create = useMutation({
@@ -79,9 +86,10 @@ export function UsersPage() {
                 <Badge variant="success">正常</Badge>
               ),
           },
-          { header: "创建时间", cell: (u) => formatDate(u.created_at) },
+          { header: "创建时间", className: "font-mono text-[13px] text-muted-foreground", cell: (u) => formatDate(u.created_at) },
         ]}
       />
+      <Pager offset={offset} limit={limit} count={data?.users.length ?? 0} total={data?.total} onOffsetChange={setOffset} />
 
       <CreateUserDialog open={open} onClose={() => setOpen(false)} onSubmit={(b) => create.mutate(b)} loading={create.isPending} />
 
@@ -89,13 +97,16 @@ export function UsersPage() {
         open={!!created}
         onClose={() => setCreated(null)}
         title="用户已创建"
-        footer={<Button onClick={() => setCreated(null)}>完成</Button>}
+        lockClose
+        footer={<Button onClick={() => setCreated(null)}>我已保存，完成</Button>}
       >
-        <p className="text-sm text-muted-foreground">请将以下临时密码线下告知成员，首次登录将强制改密并绑定 MFA。</p>
-        <div className="mt-3 space-y-2 rounded-lg border bg-muted/40 p-3 font-mono text-sm">
+        <p className="text-sm text-muted-foreground">
+          请将以下临时密码线下告知成员，首次登录将强制改密并绑定 MFA。<b>关闭后将无法再次查看。</b>
+        </p>
+        <div className="mt-3 space-y-2 rounded-md border bg-muted/40 p-3 font-mono text-sm">
           <div>用户名：{created?.username}</div>
           <div className="flex items-center justify-between gap-2">
-            <span>临时密码：{created?.password}</span>
+            <span className="break-all">临时密码:{created?.password}</span>
             {created && <CopyButton value={created.password} />}
           </div>
         </div>
@@ -139,6 +150,7 @@ function CreateUserDialog({
       onClose={onClose}
       title="新建用户"
       onSubmit={submit}
+      submitting={loading}
       footer={
         <>
           <Button variant="outline" type="button" onClick={onClose}>取消</Button>

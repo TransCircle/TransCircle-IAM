@@ -1,7 +1,7 @@
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { Badge, Input, PageHeader, RelativeTime, Select } from "@/components/ui";
+import { Badge, Input, PageHeader, Pager, RelativeTime, Select, useDebounced } from "@/components/ui";
 import { DataTable } from "@/components/DataTable";
 import { auditActionLabel, auditTargetText } from "@/lib/audit";
 import type { AuditEntry } from "@/lib/types";
@@ -10,11 +10,21 @@ import type { AuditEntry } from "@/lib/types";
 export function AuditPage() {
   const [action, setAction] = React.useState("");
   const [result, setResult] = React.useState("");
+  const [offset, setOffset] = React.useState(0);
+
+  const limit = 50;
+  const debouncedAction = useDebounced(action);
+  React.useEffect(() => setOffset(0), [debouncedAction, result]);
 
   const { data, isLoading } = useQuery<{ entries: AuditEntry[] }>({
-    queryKey: ["audit", action, result],
+    queryKey: ["audit", debouncedAction, result, offset],
     queryFn: async () =>
-      (await api.get(`/api/v1/admin/audit?action=${encodeURIComponent(action)}&result=${encodeURIComponent(result)}&limit=100`)).data,
+      (
+        await api.get(
+          `/api/v1/admin/audit?action=${encodeURIComponent(debouncedAction)}&result=${encodeURIComponent(result)}&limit=${limit}&offset=${offset}`
+        )
+      ).data,
+    placeholderData: keepPreviousData,
   });
 
   return (
@@ -51,8 +61,15 @@ export function AuditPage() {
               e.result === "denied" ? <Badge variant="destructive">拒绝</Badge> :
               <Badge variant="muted">失败</Badge>,
           },
-          { header: "IP", className: "whitespace-nowrap", cell: (e) => e.ip || "—" },
+          { header: "IP", className: "whitespace-nowrap font-mono text-[13px]", cell: (e) => e.ip || "—" },
         ]}
+      />
+      <Pager
+        offset={offset}
+        limit={limit}
+        count={data?.entries.length ?? 0}
+        hasMore={(data?.entries.length ?? 0) === limit}
+        onOffsetChange={setOffset}
       />
     </div>
   );

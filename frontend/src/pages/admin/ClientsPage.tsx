@@ -54,7 +54,7 @@ export function ClientsPage() {
         onRowClick={(c) => navigate(`/admin/clients/${c.client_id}`)}
         columns={[
           { header: "名称", cell: (c) => <span className="font-medium">{c.client_name}</span> },
-          { header: "Client ID", cell: (c) => <code className="text-xs">{c.client_id}</code> },
+          { header: "Client ID", cell: (c) => <code className="font-mono text-xs">{c.client_id}</code> },
           { header: "类型", cell: (c) => (c.public ? <Badge variant="muted">公共</Badge> : <Badge>机密</Badge>) },
           { header: "状态", cell: (c) => (c.active ? <Badge variant="success">启用</Badge> : <Badge variant="muted">停用</Badge>) },
           {
@@ -84,9 +84,15 @@ export function ClientsPage() {
         loading={del.isPending}
       />
 
-      <Dialog open={!!secret} onClose={() => setSecret(null)} title="客户端密钥（仅显示一次）" footer={<Button onClick={() => setSecret(null)}>我已保存</Button>}>
+      <Dialog
+        open={!!secret}
+        onClose={() => setSecret(null)}
+        title="客户端密钥（仅显示一次）"
+        lockClose
+        footer={<Button onClick={() => setSecret(null)}>我已保存</Button>}
+      >
         <p className="text-sm text-muted-foreground">请立即复制保存，关闭后无法再次查看。</p>
-        <div className="mt-3 flex items-center justify-between gap-2 break-all rounded-lg border bg-muted/40 p-3 font-mono text-sm">
+        <div className="mt-3 flex items-center justify-between gap-2 break-all rounded-md border bg-muted/40 p-3 font-mono text-sm">
           <span className="break-all">{secret?.secret}</span>
           {secret && <CopyButton value={secret.secret} />}
         </div>
@@ -112,7 +118,14 @@ function CreateClientDialog({
   const [skipConsent, setSkipConsent] = React.useState(false);
 
   React.useEffect(() => {
-    if (!open) { setName(""); setAppId(""); setPub(false); setRedirects(""); setSkipConsent(false); }
+    if (!open) {
+      setName("");
+      setAppId("");
+      setPub(false);
+      setRedirects("");
+      setScopes(["openid", "profile", "email", "tc.permissions"]);
+      setSkipConsent(false);
+    }
   }, [open]);
 
   const create = useMutation({
@@ -138,11 +151,15 @@ function CreateClientDialog({
       toast("名称不能为空", "error");
       return;
     }
+    if (!scopes.includes("openid")) {
+      toast("openid 是 OIDC 必需范围，不能取消", "error");
+      return;
+    }
     create.mutate();
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title="新建 OIDC 客户端" onSubmit={submit}
+    <Dialog open={open} onClose={onClose} title="新建 OIDC 客户端" onSubmit={submit} submitting={create.isPending}
       footer={<><Button variant="outline" type="button" onClick={onClose}>取消</Button><Button type="submit" loading={create.isPending}>创建</Button></>}>
       <div className="space-y-4">
         <Field label="名称"><Input value={name} autoFocus onChange={(e) => setName(e.target.value)} /></Field>
@@ -160,9 +177,10 @@ function CreateClientDialog({
         <Field label="授权范围 (Scopes)" help="openid 必选；tc.permissions 用于下发该应用下用户的角色与权限。">
           <div className="flex flex-wrap gap-3">
             {ALL_SCOPES.map((s) => (
-              <label key={s} className="flex items-center gap-1.5 text-sm">
+              <label key={s} className="flex items-center gap-1.5 font-mono text-sm">
                 <Checkbox
                   checked={scopes.includes(s)}
+                  disabled={s === "openid"}
                   onCheckedChange={(checked) => setScopes((prev) => (checked ? [...prev, s] : prev.filter((x) => x !== s)))}
                 />
                 {s}

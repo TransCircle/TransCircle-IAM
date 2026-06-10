@@ -86,7 +86,7 @@ export function ProfilePage() {
               <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="你的显示名" />
             </Field>
             <Field label="邮箱" help="邮箱仅作展示用途，无需验证，可自行填写。">
-              <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
             </Field>
             <Button onClick={() => save.mutate()} loading={save.isPending}>
               保存修改

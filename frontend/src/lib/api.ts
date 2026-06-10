@@ -1,6 +1,6 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { getCookie } from "./utils";
-import { requestStepUp } from "./stepup";
+import { requestStepUp, StepUpCancelledError } from "./stepup";
 
 export const api = axios.create({ baseURL: "/", withCredentials: true });
 
@@ -39,6 +39,9 @@ export interface ProblemError {
 }
 
 export function problemFrom(err: unknown): ProblemError {
+  if (err instanceof StepUpCancelledError) {
+    return { code: "step_up_cancelled", title: "已取消二次验证" };
+  }
   const ax = err as AxiosError<ProblemError>;
   if (ax?.response?.data?.code) return ax.response.data;
   return { code: "network_error", title: "网络错误，请稍后重试" };

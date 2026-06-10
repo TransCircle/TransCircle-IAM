@@ -19,9 +19,12 @@ export function OnboardingPage() {
   }, [action, navigate]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
-      <Card className="w-full max-w-md">
+    <div className="bg-grid flex min-h-screen items-center justify-center p-4">
+      <Card className="bracket-frame w-full max-w-md">
         <CardHeader>
+          <div className="mono-label mb-1 text-muted-foreground">
+            onboarding · <span className="text-primary">{action === "change_password" ? "01 密码" : "02 多因素"}</span>
+          </div>
           <CardTitle>账户初始化</CardTitle>
           <p className="text-sm text-muted-foreground">
             首次登录需要完成以下安全设置后方可使用系统。
@@ -44,6 +47,7 @@ function ChangePasswordStep({ onDone, toast }: { onDone: () => void; toast: (m: 
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (loading) return;
     if (next !== confirm) {
       toast("两次输入的密码不一致", "error");
       return;

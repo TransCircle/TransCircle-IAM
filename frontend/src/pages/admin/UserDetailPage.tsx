@@ -1,9 +1,9 @@
 import * as React from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ShieldAlert, Save } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
-import { Avatar, Badge, Button, Card, CardContent, CardHeader, CardTitle, CheckRow, CopyButton, Field, Input, PageHeader, Select, Switch, Tabs } from "@/components/ui";
+import { Avatar, Badge, Button, Card, CardContent, CardHeader, CardTitle, CheckRow, CopyButton, Field, Input, PageHeader, Select, Spinner, Switch, Tabs } from "@/components/ui";
 import { Dialog, ConfirmDialog } from "@/components/Dialog";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/auth/AuthProvider";
@@ -46,6 +46,7 @@ function useAssignmentToggle(
 
 export function UserDetailPage() {
   const { id = "" } = useParams();
+  const navigate = useNavigate();
   const { me, hasPermission, isSuperAdmin } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -153,7 +154,39 @@ export function UserDetailPage() {
     uploadAvatar.mutate(file);
   }
 
-  if (!user.data) return null;
+  if (user.isError) {
+    return (
+      <div className="bracket-frame rounded-lg border border-dashed bg-card/50 p-10 text-center text-sm text-muted-foreground">
+        用户不存在或加载失败。
+        <div className="mt-3">
+          <Button variant="outline" size="sm" onClick={() => navigate("/admin/users")}>
+            返回用户列表
+          </Button>
+        </div>
+      </div>
+    );
+  }
+  if (!user.data) {
+    return (
+      <div className="flex justify-center p-10">
+        <Spinner className="h-6 w-6" />
+      </div>
+    );
+  }
+  // A failed assignments query must NOT render everything as "unassigned" —
+  // an admin could be misled into re-granting or mis-reading a super-admin.
+  if (assignments.isError) {
+    return (
+      <div className="bracket-frame rounded-lg border border-dashed bg-card/50 p-10 text-center text-sm text-muted-foreground">
+        无法加载该用户的授权数据，页面已停止渲染以免误导操作。
+        <div className="mt-3">
+          <Button variant="outline" size="sm" onClick={() => assignments.refetch()}>
+            重试
+          </Button>
+        </div>
+      </div>
+    );
+  }
   const permIds = new Set(assignments.data?.permissions ?? []);
   const groupIds = new Set(assignments.data?.groups ?? []);
 
@@ -320,9 +353,11 @@ function ResetPasswordDialog({ open, onClose, userId, username }: { open: boolea
 
   if (result) {
     return (
-      <Dialog open={open} onClose={onClose} title="临时密码已生成" footer={<Button onClick={onClose}>完成</Button>}>
-        <p className="text-sm text-muted-foreground">请将以下一次性临时密码线下告知 {username},其首次登录须改密。</p>
-        <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border bg-muted/40 p-3 font-mono text-sm">
+      <Dialog open={open} onClose={onClose} title="临时密码已生成" lockClose footer={<Button onClick={onClose}>我已保存，完成</Button>}>
+        <p className="text-sm text-muted-foreground">
+          请将以下一次性临时密码线下告知 {username}，其首次登录须改密。<b>关闭后无法再次查看。</b>
+        </p>
+        <div className="mt-3 flex items-center justify-between gap-2 rounded-md border bg-muted/40 p-3 font-mono text-sm">
           <span className="break-all">{result}</span>
           <CopyButton value={result} />
         </div>

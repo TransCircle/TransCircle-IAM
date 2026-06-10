@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Settings2, Pencil, Save } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
@@ -14,17 +14,19 @@ import {
   Field,
   Input,
   PageHeader,
+  Spinner,
   Switch,
   Tabs,
   Textarea,
 } from "@/components/ui";
-import { Dialog } from "@/components/Dialog";
+import { Dialog, ConfirmDialog } from "@/components/Dialog";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/auth/AuthProvider";
 import type { Application, Permission, Role } from "@/lib/types";
 
 export function ApplicationDetailPage() {
   const { id = "" } = useParams();
+  const navigate = useNavigate();
   const [tab, setTab] = React.useState("permissions");
   const app = useQuery<Application[]>({
     queryKey: ["applications"],
@@ -32,10 +34,32 @@ export function ApplicationDetailPage() {
   });
   const current = app.data?.find((a) => a.id === id);
 
+  if (app.isLoading) {
+    return (
+      <div className="flex justify-center p-10">
+        <Spinner className="h-6 w-6" />
+      </div>
+    );
+  }
+  // A bad/stale id must not render a fake-empty page that still fires
+  // sub-queries against the unknown application.
+  if (app.isError || !current) {
+    return (
+      <div className="bracket-frame rounded-lg border border-dashed bg-card/50 p-10 text-center text-sm text-muted-foreground">
+        应用不存在或加载失败。
+        <div className="mt-3">
+          <Button variant="outline" size="sm" onClick={() => navigate("/admin/applications")}>
+            返回应用列表
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div>
-      <PageHeader title={current?.display_name || "应用"} description={current?.description} />
-      {current && <AppBasicInfo app={current} />}
+    <div className="stagger">
+      <PageHeader title={current.display_name} description={current.description} />
+      <AppBasicInfo app={current} />
       <div className="mb-4 mt-6">
         <Tabs
           value={tab}
@@ -110,7 +134,12 @@ function PermissionsTab({ appId }: { appId: string }) {
   const empty = { key: "", display_name: "", description: "", notes: "", category: "" };
   const [open, setOpen] = React.useState(false);
   const [edit, setEdit] = React.useState<Permission | null>(null);
+  const [confirmDel, setConfirmDel] = React.useState<Permission | null>(null);
   const [form, setForm] = React.useState(empty);
+  React.useEffect(() => {
+    if (!open) setForm(empty);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const perms = useQuery<Permission[]>({
     queryKey: ["app-perms", appId],
@@ -141,7 +170,10 @@ function PermissionsTab({ appId }: { appId: string }) {
   });
   const del = useMutation({
     mutationFn: (pid: string) => api.delete(`/api/v1/admin/permissions/${pid}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["app-perms", appId] }),
+    onSuccess: () => {
+      setConfirmDel(null);
+      qc.invalidateQueries({ queryKey: ["app-perms", appId] });
+    },
     onError: (e) => toast(errorMessage(e), "error"),
   });
 
@@ -167,7 +199,7 @@ function PermissionsTab({ appId }: { appId: string }) {
               {canWrite && !p.is_system && (
                 <div className="flex gap-1">
                   <Button size="icon" variant="ghost" title="编辑" onClick={() => setEdit(p)}><Pencil className="h-4 w-4" /></Button>
-                  <Button size="icon" variant="ghost" title="删除" onClick={() => del.mutate(p.id)}><Trash2 className="h-4 w-4" /></Button>
+                  <Button size="icon" variant="ghost" title="删除" onClick={() => setConfirmDel(p)}><Trash2 className="h-4 w-4" /></Button>
                 </div>
               )}
               {p.is_system && <Badge variant="muted">内置</Badge>}
@@ -177,7 +209,18 @@ function PermissionsTab({ appId }: { appId: string }) {
         {(perms.data ?? []).length === 0 && <p className="text-sm text-muted-foreground">暂无权限。</p>}
       </div>
 
-      <Dialog open={open} onClose={() => setOpen(false)} title="新建权限" onSubmit={() => create.mutate()}
+      <ConfirmDialog
+        open={!!confirmDel}
+        onClose={() => setConfirmDel(null)}
+        onConfirm={() => confirmDel && del.mutate(confirmDel.id)}
+        loading={del.isPending}
+        title={`删除权限「${confirmDel?.display_name}」？`}
+        description={`标识 ${confirmDel?.key}。删除后所有用户/角色对它的授权将一并移除。`}
+        confirmLabel="删除"
+        destructive
+      />
+
+      <Dialog open={open} onClose={() => setOpen(false)} title="新建权限" onSubmit={() => create.mutate()} submitting={create.isPending}
         footer={<><Button variant="outline" type="button" onClick={() => setOpen(false)}>取消</Button><Button type="submit" loading={create.isPending}>创建</Button></>}>
         <div className="space-y-4">
           <Field label="标识 (key)" hint="如 doc.read" help="应用内唯一的权限标识，应用会用它来判断用户能否执行某操作。">
@@ -215,7 +258,12 @@ function RolesTab({ appId }: { appId: string }) {
   const [open, setOpen] = React.useState(false);
   const [editPerms, setEditPerms] = React.useState<Role | null>(null);
   const [editMeta, setEditMeta] = React.useState<Role | null>(null);
+  const [confirmDel, setConfirmDel] = React.useState<Role | null>(null);
   const [form, setForm] = React.useState(empty);
+  React.useEffect(() => {
+    if (!open) setForm(empty);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const roles = useQuery<Role[]>({
     queryKey: ["app-roles", appId],
@@ -241,7 +289,10 @@ function RolesTab({ appId }: { appId: string }) {
   });
   const del = useMutation({
     mutationFn: (rid: string) => api.delete(`/api/v1/admin/roles/${rid}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["app-roles", appId] }),
+    onSuccess: () => {
+      setConfirmDel(null);
+      qc.invalidateQueries({ queryKey: ["app-roles", appId] });
+    },
     onError: (e) => toast(errorMessage(e), "error"),
   });
 
@@ -268,7 +319,7 @@ function RolesTab({ appId }: { appId: string }) {
                 <div className="flex gap-1">
                   <Button size="icon" variant="ghost" title="权限" onClick={() => setEditPerms(r)}><Settings2 className="h-4 w-4" /></Button>
                   {!r.is_system && <Button size="icon" variant="ghost" title="编辑" onClick={() => setEditMeta(r)}><Pencil className="h-4 w-4" /></Button>}
-                  {!r.is_system && <Button size="icon" variant="ghost" title="删除" onClick={() => del.mutate(r.id)}><Trash2 className="h-4 w-4" /></Button>}
+                  {!r.is_system && <Button size="icon" variant="ghost" title="删除" onClick={() => setConfirmDel(r)}><Trash2 className="h-4 w-4" /></Button>}
                 </div>
               )}
             </CardContent>
@@ -277,7 +328,18 @@ function RolesTab({ appId }: { appId: string }) {
         {(roles.data ?? []).length === 0 && <p className="text-sm text-muted-foreground">暂无角色。</p>}
       </div>
 
-      <Dialog open={open} onClose={() => setOpen(false)} title="新建角色" onSubmit={() => create.mutate()}
+      <ConfirmDialog
+        open={!!confirmDel}
+        onClose={() => setConfirmDel(null)}
+        onConfirm={() => confirmDel && del.mutate(confirmDel.id)}
+        loading={del.isPending}
+        title={`删除角色「${confirmDel?.display_name}」？`}
+        description={`标识 ${confirmDel?.key}。删除后拥有该角色的用户/身份组将失去其权限。`}
+        confirmLabel="删除"
+        destructive
+      />
+
+      <Dialog open={open} onClose={() => setOpen(false)} title="新建角色" onSubmit={() => create.mutate()} submitting={create.isPending}
         footer={<><Button variant="outline" type="button" onClick={() => setOpen(false)}>取消</Button><Button type="submit" loading={create.isPending}>创建</Button></>}>
         <div className="space-y-4">
           <Field label="标识 (key)" hint="如 editor" help="角色是一组权限的集合；标识用于在该应用内唯一标记此角色。">

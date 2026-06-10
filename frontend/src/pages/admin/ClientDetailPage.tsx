@@ -68,19 +68,22 @@ function CheckGroup({
   value,
   onChange,
   disabled,
+  locked = [],
 }: {
   all: string[];
   value: string[];
   onChange: (v: string[]) => void;
   disabled?: boolean;
+  // Entries that can't be toggled off (e.g. openid is mandatory for OIDC).
+  locked?: string[];
 }) {
   return (
     <div className="flex flex-wrap gap-3">
       {all.map((s) => (
-        <label key={s} className="flex items-center gap-1.5 text-sm">
+        <label key={s} className="flex items-center gap-1.5 font-mono text-sm">
           <Checkbox
             checked={value.includes(s)}
-            disabled={disabled}
+            disabled={disabled || locked.includes(s)}
             onCheckedChange={(c) => onChange(c ? [...value, s] : value.filter((x) => x !== s))}
           />
           {s}
@@ -101,6 +104,7 @@ export function ClientDetailPage() {
   const [form, setForm] = React.useState<Form | null>(null);
   const [secret, setSecret] = React.useState<string | null>(null);
   const [confirmDel, setConfirmDel] = React.useState(false);
+  const [confirmRotate, setConfirmRotate] = React.useState(false);
 
   const client = useQuery<OAuthClient>({
     queryKey: ["client", clientId],
@@ -140,7 +144,10 @@ export function ClientDetailPage() {
   });
   const rotate = useMutation({
     mutationFn: () => api.post(`/api/v1/admin/clients/${clientId}/rotate-secret`),
-    onSuccess: (r) => setSecret(r.data.client_secret),
+    onSuccess: (r) => {
+      setConfirmRotate(false);
+      setSecret(r.data.client_secret);
+    },
     onError: (e) => toast(errorMessage(e), "error"),
   });
   const reveal = useMutation({
@@ -157,15 +164,26 @@ export function ClientDetailPage() {
     onError: (e) => toast(errorMessage(e), "error"),
   });
 
-  if (client.isLoading || !form) {
+  // Order matters: on a fetch error `form` never gets set, so the error check
+  // must run BEFORE the loading check or this page spins forever.
+  if (client.isError) {
+    return (
+      <div className="bracket-frame rounded-lg border border-dashed bg-card/50 p-10 text-center text-sm text-muted-foreground">
+        客户端不存在或加载失败。
+        <div className="mt-3">
+          <Button variant="outline" size="sm" onClick={() => navigate("/admin/clients")}>
+            返回客户端列表
+          </Button>
+        </div>
+      </div>
+    );
+  }
+  if (client.isLoading || !form || !client.data) {
     return (
       <div className="flex justify-center p-10">
         <Spinner className="h-6 w-6" />
       </div>
     );
-  }
-  if (client.isError || !client.data) {
-    return <div className="text-sm text-destructive">客户端不存在或加载失败。</div>;
   }
   const c = client.data;
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => (f ? { ...f, [k]: v } : f));
@@ -183,7 +201,16 @@ export function ClientDetailPage() {
         description="编辑该 OIDC 客户端的全部可变配置。Client ID 与客户端类型不可更改。"
         action={
           canWrite && (
-            <Button onClick={() => save.mutate()} loading={save.isPending}>
+            <Button
+              onClick={() => {
+                if (!form.scopes.includes("openid")) {
+                  toast("openid 是 OIDC 必需范围，不能取消", "error");
+                  return;
+                }
+                save.mutate();
+              }}
+              loading={save.isPending}
+            >
               <Save className="h-4 w-4" /> 保存
             </Button>
           )
@@ -241,7 +268,7 @@ export function ClientDetailPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <Field label="授权范围 (Scopes)" help="openid 必选；tc.permissions 用于下发该应用下用户的角色与权限。">
-              <CheckGroup all={ALL_SCOPES} value={form.scopes} onChange={(v) => set("scopes", v)} disabled={!canWrite} />
+              <CheckGroup all={ALL_SCOPES} value={form.scopes} onChange={(v) => set("scopes", v)} disabled={!canWrite} locked={["openid"]} />
             </Field>
             <Field label="授权类型 (Grant Types)">
               <CheckGroup all={ALL_GRANTS} value={form.grants} onChange={(v) => set("grants", v)} disabled={!canWrite} />
@@ -286,7 +313,7 @@ export function ClientDetailPage() {
             <CardContent className="space-y-3">
               {!c.public && (
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" onClick={() => rotate.mutate()} loading={rotate.isPending}>
+                  <Button variant="outline" onClick={() => setConfirmRotate(true)}>
                     <RefreshCw className="h-4 w-4" /> 轮换密钥
                   </Button>
                   <Button variant="outline" onClick={() => reveal.mutate()} loading={reveal.isPending}>
@@ -317,14 +344,26 @@ export function ClientDetailPage() {
         loading={del.isPending}
       />
 
+      <ConfirmDialog
+        open={confirmRotate}
+        onClose={() => setConfirmRotate(false)}
+        onConfirm={() => rotate.mutate()}
+        loading={rotate.isPending}
+        title="轮换客户端密钥？"
+        description="将生成新密钥并立即生效；旧密钥仅在短暂的宽限期内可用，请尽快更新接入应用的配置。"
+        confirmLabel="轮换"
+        destructive
+      />
+
       <Dialog
         open={!!secret}
         onClose={() => setSecret(null)}
         title="客户端密钥"
+        lockClose
         footer={<Button onClick={() => setSecret(null)}>我已保存</Button>}
       >
-        <p className="text-sm text-muted-foreground">请妥善保管密钥。</p>
-        <div className="mt-3 flex items-center justify-between gap-2 break-all rounded-lg border bg-muted/40 p-3 font-mono text-sm">
+        <p className="text-sm text-muted-foreground">请妥善保管密钥，关闭后无法再次查看。</p>
+        <div className="mt-3 flex items-center justify-between gap-2 break-all rounded-md border bg-muted/40 p-3 font-mono text-sm">
           <span className="break-all">{secret}</span>
           {secret && <CopyButton value={secret} />}
         </div>
