@@ -146,7 +146,7 @@ export function UserSearchSelect({
           <div
             ref={menuRef}
             style={{ position: "fixed", left: box.left, top: box.top, width: box.width, maxHeight: box.maxH }}
-            className="z-[70] animate-pop-in overflow-auto rounded-lg border bg-card p-1 shadow-lg"
+            className="z-[70] animate-pop-in overflow-auto rounded-md border bg-popover p-1 shadow-xl shadow-black/10"
           >
             {loading && (
               <div className="flex items-center justify-center gap-2 px-3 py-3 text-sm text-muted-foreground">

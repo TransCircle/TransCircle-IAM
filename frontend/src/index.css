@@ -15,7 +15,10 @@
   --foreground: 192 30% 11%;
   --card: 40 36% 99%;
   --card-foreground: 192 30% 11%;
-  --popover: 40 36% 99%;
+  /* Popovers/menus float over arbitrary page content — keep them a fully
+     opaque solid so text behind never bleeds through. */
+  --popover: 40 40% 100%;
+  --popover-foreground: 192 30% 11%;
 
   --primary: 174 100% 21%;
   --primary-foreground: 40 36% 98%;
@@ -53,7 +56,8 @@
   --foreground: 42 22% 88%;
   --card: 192 21% 10%;
   --card-foreground: 42 22% 88%;
-  --popover: 192 22% 11%;
+  --popover: 192 24% 12%;
+  --popover-foreground: 42 22% 88%;
 
   --primary: 168 62% 50%;
   --primary-foreground: 192 30% 7%;
