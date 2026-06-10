@@ -473,7 +473,7 @@ export function CheckRow({
         >
           {checked && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
         </span>
-        <span className="flex min-w-0 flex-1 items-center gap-2">{children}</span>
+        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">{children}</span>
       </button>
       {locked && lockedHint && (
         <span className="absolute right-2.5 top-1/2 -translate-y-1/2">
@@ -519,27 +519,64 @@ export function Switch({
 
 /* ----------------------------- Help tooltip ----------------------------- */
 
+// The bubble renders in a body portal at a viewport-clamped fixed position, so
+// help icons near the screen edge (frequent on phones) never overflow the page.
 export function Help({ text, className }: { text: string; className?: string }) {
   const [open, setOpen] = React.useState(false);
+  const btnRef = React.useRef<HTMLButtonElement>(null);
+  const [box, setBox] = React.useState<{ left: number; top?: number; bottom?: number; width: number } | null>(null);
+
+  const show = React.useCallback(() => {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const width = Math.min(224, window.innerWidth - 16);
+    const left = Math.min(Math.max(8, r.left + r.width / 2 - width / 2), window.innerWidth - width - 8);
+    // Prefer above the icon; flip below when there isn't room.
+    setBox(
+      r.top > 120
+        ? { left, width, bottom: window.innerHeight - r.top + 6 }
+        : { left, width, top: r.bottom + 6 }
+    );
+    setOpen(true);
+  }, []);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const hide = () => setOpen(false);
+    const onDoc = (e: MouseEvent) => {
+      if (!btnRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener("scroll", hide, true);
+    window.addEventListener("resize", hide);
+    document.addEventListener("mousedown", onDoc);
+    return () => {
+      window.removeEventListener("scroll", hide, true);
+      window.removeEventListener("resize", hide);
+      document.removeEventListener("mousedown", onDoc);
+    };
+  }, [open]);
+
   return (
-    <span
-      className={cn("relative inline-flex", className)}
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-    >
+    <span className={cn("inline-flex", className)} onMouseEnter={show} onMouseLeave={() => setOpen(false)}>
       <button
+        ref={btnRef}
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="text-muted-foreground/70 transition-colors hover:text-primary"
+        onClick={() => (open ? setOpen(false) : show())}
+        className="-m-1 p-1 text-muted-foreground/70 transition-colors hover:text-primary"
         aria-label="帮助"
       >
         <HelpCircle className="h-3.5 w-3.5" />
       </button>
-      {open && (
-        <span className="absolute bottom-full left-1/2 z-50 mb-1.5 w-56 -translate-x-1/2 animate-fade-in rounded-md border bg-popover px-3 py-2 text-xs font-normal leading-relaxed text-muted-foreground shadow-lg">
-          {text}
-        </span>
-      )}
+      {open && box &&
+        createPortal(
+          <span
+            style={{ position: "fixed", left: box.left, top: box.top, bottom: box.bottom, width: box.width }}
+            className="z-[80] animate-fade-in rounded-md border bg-popover px-3 py-2 text-xs font-normal leading-relaxed text-muted-foreground shadow-lg"
+          >
+            {text}
+          </span>,
+          document.body
+        )}
     </span>
   );
 }
@@ -558,14 +595,14 @@ export function Tabs({
   className?: string;
 }) {
   return (
-    <div className={cn("flex gap-5 border-b", className)}>
+    <div className={cn("no-scrollbar flex gap-5 overflow-x-auto border-b", className)}>
       {tabs.map((t) => (
         <button
           key={t.value}
           type="button"
           onClick={() => onValueChange(t.value)}
           className={cn(
-            "-mb-px border-b-2 px-0.5 pb-2 text-sm font-medium transition-colors",
+            "-mb-px shrink-0 whitespace-nowrap border-b-2 px-0.5 pb-2 text-sm font-medium transition-colors",
             value === t.value
               ? "border-primary text-foreground"
               : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
@@ -601,7 +638,7 @@ export function CopyButton({ value, className, label }: { value: string; classNa
         setTimeout(() => setState("idle"), ok ? 1500 : 3000);
       }}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground",
+        "inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground",
         state === "failed" && "border-destructive/50 text-destructive",
         className
       )}
@@ -685,7 +722,7 @@ export function Pager({
   const more = total !== undefined ? offset + count < total : !!hasMore;
   if (offset === 0 && !more) return null;
   return (
-    <div className="mt-3 flex items-center justify-between">
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
       <span className="font-mono text-xs text-muted-foreground">
         {count > 0 ? `${offset + 1}–${offset + count}` : "0"}
         {total !== undefined ? ` / ${total}` : ""}

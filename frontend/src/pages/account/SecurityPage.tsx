@@ -110,14 +110,14 @@ export function SecurityPage() {
           <CardContent className="space-y-2">
             {(passkeys.data ?? []).length === 0 && <p className="text-sm text-muted-foreground">尚未注册通行密钥。</p>}
             {(passkeys.data ?? []).map((pk) => (
-              <div key={pk.id} className="flex items-center justify-between rounded-md border p-3 text-sm">
-                <div>
-                  <div className="font-medium">{pk.name}</div>
+              <div key={pk.id} className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
+                <div className="min-w-0">
+                  <div className="truncate font-medium">{pk.name}</div>
                   <div className="text-xs text-muted-foreground">
                     添加于 {formatDate(pk.created_at)} · 最近使用 {formatDate(pk.last_used_at)}
                   </div>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex shrink-0 items-center gap-1">
                   <Button
                     size="icon"
                     variant="ghost"

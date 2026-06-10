@@ -30,10 +30,10 @@ export function AuditPage() {
   return (
     <div>
       <PageHeader title="审计日志" description="所有管理与安全操作的不可篡改记录。" />
-      <div className="mb-4 flex flex-wrap gap-3">
-        <Input className="max-w-xs" placeholder="按动作关键字过滤，如 iam.user / login / mfa" value={action} onChange={(e) => setAction(e.target.value)} />
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row">
+        <Input className="sm:max-w-xs" placeholder="按动作关键字过滤，如 iam.user / login / mfa" value={action} onChange={(e) => setAction(e.target.value)} />
         <Select
-          className="w-40"
+          className="w-full sm:w-40"
           value={result}
           onValueChange={setResult}
           options={[

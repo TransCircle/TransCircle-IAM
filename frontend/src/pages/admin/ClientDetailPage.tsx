@@ -290,15 +290,15 @@ export function ClientDetailPage() {
             <Field label="允许查询的应用 key（每行一个）" help="若该客户端也用于机器权限查询，限定其可访问的应用；留空表示不限定。">
               <Textarea value={form.allowedAppKeys} disabled={!canWrite} spellCheck={false} onChange={(e) => set("allowedAppKeys", e.target.value)} />
             </Field>
-            <div className="flex items-center justify-between rounded-lg border p-3 text-sm">
+            <div className="flex items-center justify-between gap-3 rounded-lg border p-3 text-sm">
               <span>启用客户端</span>
               <Switch checked={form.active} disabled={!canWrite} onCheckedChange={(v) => set("active", v)} />
             </div>
-            <div className="flex items-center justify-between rounded-lg border p-3 text-sm">
+            <div className="flex items-center justify-between gap-3 rounded-lg border p-3 text-sm">
               <span>强制 PKCE (S256)<span className="ml-2 text-xs text-muted-foreground">全局强制,始终开启</span></span>
               <Switch checked disabled onCheckedChange={() => {}} />
             </div>
-            <div className="flex items-center justify-between rounded-lg border p-3 text-sm">
+            <div className="flex items-center justify-between gap-3 rounded-lg border p-3 text-sm">
               <span>可信应用（跳过授权同意屏）</span>
               <Switch checked={form.skip_consent} disabled={!canWrite} onCheckedChange={(v) => set("skip_consent", v)} />
             </div>
@@ -322,9 +322,9 @@ export function ClientDetailPage() {
                   <span className="self-center text-xs text-muted-foreground">查看/轮换密钥需二次验证。</span>
                 </div>
               )}
-              <div className="flex items-center justify-between rounded-lg border border-destructive/30 p-3">
+              <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 p-3 sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-sm">删除此客户端后，使用它的应用将无法再登录。</span>
-                <Button variant="destructive" onClick={() => setConfirmDel(true)}>
+                <Button variant="destructive" className="shrink-0 self-start sm:self-auto" onClick={() => setConfirmDel(true)}>
                   <Trash2 className="h-4 w-4" /> 删除
                 </Button>
               </div>

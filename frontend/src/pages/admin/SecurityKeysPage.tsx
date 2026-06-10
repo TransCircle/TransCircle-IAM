@@ -51,7 +51,7 @@ export function SecurityKeysPage() {
         rows={data?.signing_keys}
         rowKey={(k) => k.kid}
         columns={[
-          { header: "KID", cell: (k) => <code className="font-mono text-xs">{k.kid}</code> },
+          { header: "KID", cell: (k) => <code className="break-all font-mono text-xs">{k.kid}</code> },
           { header: "算法", className: "font-mono text-[13px]", cell: (k) => k.algorithm },
           {
             header: "状态",

@@ -47,7 +47,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={{ toast }}>
       {children}
-      <div className="pointer-events-none fixed bottom-4 right-4 z-[80] flex w-[min(90vw,22rem)] flex-col gap-2">
+      <div className="pointer-events-none fixed inset-x-4 bottom-4 z-[80] flex flex-col gap-2 sm:inset-x-auto sm:right-4 sm:w-[22rem]">
         {items.map((t) => {
           const Icon = icons[t.kind];
           return (

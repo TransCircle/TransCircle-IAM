@@ -91,10 +91,27 @@
   border-color: hsl(var(--border));
 }
 
+:root {
+  color-scheme: light;
+}
+.dark {
+  color-scheme: dark;
+}
+
 html,
 body,
 #root {
   height: 100%;
+}
+
+/* Stray wide content (long tokens, portalled tooltips mid-measure) must never
+   give the whole page a horizontal scrollbar on phones. `clip` does not create
+   a scroll container, so position:sticky keeps working. */
+@supports (overflow: clip) {
+  html,
+  body {
+    overflow-x: clip;
+  }
 }
 
 body {
@@ -107,6 +124,32 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   font-feature-settings: "tnum";
+}
+
+/* Mobile viewports: 100vh includes the collapsed URL bar and makes layouts
+   jump; dvh tracks the real visible height. Upgrades every *-screen utility
+   in one place, with vh as the natural fallback. */
+@supports (height: 100dvh) {
+  .min-h-screen {
+    min-height: 100dvh;
+  }
+  .h-screen {
+    height: 100dvh;
+  }
+  .max-h-screen {
+    max-height: 100dvh;
+  }
+}
+
+/* iOS Safari zooms the page when a focused field's font-size is below 16px.
+   On phones, force all form fields up to 16px regardless of utility classes
+   (the :is([class]) keeps specificity above .text-sm / .text-xs). */
+@media (max-width: 767px) {
+  input:is([class]),
+  textarea:is([class]),
+  select:is([class]) {
+    font-size: 16px;
+  }
 }
 
 ::selection {
@@ -221,12 +264,29 @@ body {
       gap: 1rem;
       padding: 0.5rem 1rem;
       text-align: right;
+      /* Desktop-oriented nowrap/mono cells must still wrap long values
+         (client ids, tokens, UA strings) inside a stacked card. */
+      white-space: normal;
+      overflow-wrap: anywhere;
+      min-width: 0;
     }
     table.tc-table td::before {
       content: attr(data-label);
       font-weight: 500;
       color: hsl(var(--muted-foreground));
       text-align: left;
+      flex-shrink: 0;
+    }
+    /* Action columns have an empty header — drop the blank label and keep
+       their buttons on the right edge of the card. */
+    table.tc-table td[data-label=""] {
+      justify-content: flex-end;
+    }
+    table.tc-table td[data-label=""]::before {
+      content: none;
+    }
+    table.tc-table td[data-label=""]:empty {
+      display: none;
     }
   }
 }
@@ -240,6 +300,10 @@ body {
   @keyframes shimmer { 100% { transform: translateX(100%); } }
   @keyframes ping-soft { 0% { transform: scale(0.7); opacity: 1; } 80%, 100% { transform: scale(1.6); opacity: 0; } }
   @keyframes reveal-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+  /* Horizontal scroll without a visible bar (mobile tab strips). */
+  .no-scrollbar { scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
 
   .animate-fade-in { animation: fade-in 0.18s ease-out; }
   .animate-zoom-in { animation: zoom-in 0.22s cubic-bezier(0.16, 1, 0.3, 1); }

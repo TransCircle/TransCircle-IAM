@@ -243,7 +243,7 @@ export function GroupDetailPage() {
             <div className="space-y-2">
               {members.length === 0 && <p className="text-sm text-muted-foreground">暂无成员。</p>}
               {members.map((m) => (
-                <div key={m.id} className="flex items-center justify-between rounded-lg border p-2.5">
+                <div key={m.id} className="flex items-center justify-between gap-2 rounded-lg border p-2.5">
                   <div className="flex min-w-0 items-center gap-2.5">
                     <Avatar src={m.avatar_url} name={m.display_name || m.username} size="sm" />
                     <div className="min-w-0 leading-tight">
@@ -252,7 +252,7 @@ export function GroupDetailPage() {
                     </div>
                   </div>
                   {canWrite && (
-                    <Button size="icon" variant="ghost" onClick={() => removeMember.mutate(m.id)} aria-label="移除成员">
+                    <Button size="icon" variant="ghost" className="shrink-0" onClick={() => removeMember.mutate(m.id)} aria-label="移除成员">
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   )}
@@ -297,9 +297,9 @@ export function GroupDetailPage() {
               <CardTitle>危险操作</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center justify-between rounded-lg border border-destructive/30 p-3">
+              <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 p-3 sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-sm">删除后组成员将失去该组授予的角色。</span>
-                <Button variant="destructive" onClick={() => setConfirmDel(true)}>
+                <Button variant="destructive" className="shrink-0 self-start sm:self-auto" onClick={() => setConfirmDel(true)}>
                   <Trash2 className="h-4 w-4" /> 删除
                 </Button>
               </div>

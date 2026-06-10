@@ -42,9 +42,9 @@ function Endpoint({ method, path }: { method: string; path: string }) {
     PUT: "warning",
   };
   return (
-    <div className="flex items-center gap-2 text-sm">
-      <Badge variant={colors[method] || "muted"}>{method}</Badge>
-      <code className="text-xs">{path}</code>
+    <div className="flex min-w-0 items-center gap-2 text-sm">
+      <Badge variant={colors[method] || "muted"} className="shrink-0">{method}</Badge>
+      <code className="break-all text-xs">{path}</code>
     </div>
   );
 }

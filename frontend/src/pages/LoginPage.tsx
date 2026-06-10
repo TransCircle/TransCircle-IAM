@@ -178,11 +178,23 @@ export function LoginPage() {
       </div>
 
       {/* Form panel */}
-      <div className="bg-grid relative flex items-center justify-center p-6">
+      <div className="bg-grid relative flex flex-col items-center justify-center p-5 pt-16 sm:p-6 sm:pt-16 lg:pt-6">
         <div className="absolute right-4 top-4">
           <ThemeToggle />
         </div>
-        <div className="bracket-frame w-full max-w-md rounded-lg border bg-card p-8 shadow-[0_2px_16px_hsl(var(--foreground)/0.05)] sm:p-10">
+        {/* The ink brand panel is hidden below lg — phones still need the brand. */}
+        <div className="mb-6 flex items-center gap-2.5 lg:hidden">
+          <div className="bracket-frame flex h-10 w-10 items-center justify-center rounded-md brand-gradient text-white [--tick:hsl(var(--primary)/0.7)] [--tick-len:8px]">
+            <ShieldCheck className="h-5 w-5" />
+          </div>
+          <div className="leading-tight">
+            <div className="font-mono text-[15px] font-semibold tracking-tight">
+              TRANS<span className="text-primary">CIRCLE</span>
+            </div>
+            <div className="mono-label text-[10px] text-muted-foreground">identity · 统一身份</div>
+          </div>
+        </div>
+        <div className="bracket-frame w-full max-w-md rounded-lg border bg-card p-6 shadow-[0_2px_16px_hsl(var(--foreground)/0.05)] sm:p-10">
           <div className="stagger">
             <div className="mb-8">
               <div className="mono-label mb-3 flex items-center gap-2 text-muted-foreground">

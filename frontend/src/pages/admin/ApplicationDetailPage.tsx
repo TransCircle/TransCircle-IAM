@@ -110,7 +110,7 @@ function AppBasicInfo({ app }: { app: Application }) {
         <Field label="描述">
           <Textarea value={form.description} disabled={!canWrite} onChange={(e) => setForm({ ...form, description: e.target.value })} />
         </Field>
-        <div className="flex items-center justify-between rounded-lg border p-3 text-sm">
+        <div className="flex items-center justify-between gap-3 rounded-lg border p-3 text-sm">
           <span>启用应用</span>
           <Switch checked={form.is_active} disabled={!canWrite} onCheckedChange={(v) => setForm({ ...form, is_active: v })} />
         </div>
@@ -187,9 +187,9 @@ function PermissionsTab({ appId }: { appId: string }) {
       <div className="grid gap-2">
         {(perms.data ?? []).map((p) => (
           <Card key={p.id}>
-            <CardContent className="flex items-center justify-between p-4">
-              <div>
-                <div className="flex items-center gap-2 text-sm font-medium">
+            <CardContent className="flex items-center justify-between gap-3 p-4">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium">
                   {p.display_name} <Badge variant="muted">{p.key}</Badge>
                   {p.category && <Badge>{p.category}</Badge>}
                 </div>
@@ -197,7 +197,7 @@ function PermissionsTab({ appId }: { appId: string }) {
                 {p.notes && <div className="mt-0.5 text-xs text-muted-foreground">备注：{p.notes}</div>}
               </div>
               {canWrite && !p.is_system && (
-                <div className="flex gap-1">
+                <div className="flex shrink-0 gap-1">
                   <Button size="icon" variant="ghost" title="编辑" onClick={() => setEdit(p)}><Pencil className="h-4 w-4" /></Button>
                   <Button size="icon" variant="ghost" title="删除" onClick={() => setConfirmDel(p)}><Trash2 className="h-4 w-4" /></Button>
                 </div>
@@ -306,9 +306,9 @@ function RolesTab({ appId }: { appId: string }) {
       <div className="grid gap-2">
         {(roles.data ?? []).map((r) => (
           <Card key={r.id}>
-            <CardContent className="flex items-center justify-between p-4">
-              <div>
-                <div className="flex items-center gap-2 text-sm font-medium">
+            <CardContent className="flex items-center justify-between gap-3 p-4">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium">
                   {r.display_name} <Badge variant="muted">{r.key}</Badge>
                   {r.is_system && <Badge variant="muted">内置</Badge>}
                 </div>
@@ -316,7 +316,7 @@ function RolesTab({ appId }: { appId: string }) {
                 {r.notes && <div className="mt-0.5 text-xs text-muted-foreground">备注：{r.notes}</div>}
               </div>
               {canWrite && (
-                <div className="flex gap-1">
+                <div className="flex shrink-0 gap-1">
                   <Button size="icon" variant="ghost" title="权限" onClick={() => setEditPerms(r)}><Settings2 className="h-4 w-4" /></Button>
                   {!r.is_system && <Button size="icon" variant="ghost" title="编辑" onClick={() => setEditMeta(r)}><Pencil className="h-4 w-4" /></Button>}
                   {!r.is_system && <Button size="icon" variant="ghost" title="删除" onClick={() => setConfirmDel(r)}><Trash2 className="h-4 w-4" /></Button>}

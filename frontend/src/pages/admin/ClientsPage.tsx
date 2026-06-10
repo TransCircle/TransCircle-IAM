@@ -56,7 +56,7 @@ export function ClientsPage() {
         onRowClick={(c) => navigate(`/admin/clients/${c.client_id}`)}
         columns={[
           { header: "名称", cell: (c) => <span className="font-medium">{c.client_name}</span> },
-          { header: "Client ID", cell: (c) => <code className="font-mono text-xs">{c.client_id}</code> },
+          { header: "Client ID", cell: (c) => <code className="break-all font-mono text-xs">{c.client_id}</code> },
           { header: "类型", cell: (c) => (c.public ? <Badge variant="muted">公共</Badge> : <Badge>机密</Badge>) },
           { header: "状态", cell: (c) => (c.active ? <Badge variant="success">启用</Badge> : <Badge variant="muted">停用</Badge>) },
           {
@@ -190,11 +190,11 @@ function CreateClientDialog({
             ))}
           </div>
         </Field>
-        <div className="flex items-center justify-between rounded-lg border p-3 text-sm">
+        <div className="flex items-center justify-between gap-3 rounded-lg border p-3 text-sm">
           <span>公共客户端（SPA/移动端，使用 PKCE 且无密钥）</span>
           <Switch checked={pub} onCheckedChange={setPub} />
         </div>
-        <div className="flex items-center justify-between rounded-lg border p-3 text-sm">
+        <div className="flex items-center justify-between gap-3 rounded-lg border p-3 text-sm">
           <span>可信应用（跳过授权同意屏）</span>
           <Switch checked={skipConsent} onCheckedChange={setSkipConsent} />
         </div>

@@ -205,6 +205,21 @@ export function AppLayout() {
     setDrawer(false);
   }, [location.pathname]);
 
+  // While the drawer is open: freeze the page behind it and let Escape close it.
+  React.useEffect(() => {
+    if (!drawer) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDrawer(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [drawer]);
+
   async function stopImpersonation() {
     try {
       await api.post("/api/v1/admin/impersonation/stop");
@@ -224,7 +239,7 @@ export function AppLayout() {
       {drawer && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 animate-fade-in bg-black/50" onClick={() => setDrawer(false)} />
-          <aside className="absolute inset-y-0 left-0 w-72 animate-slide-in-left shadow-2xl">
+          <aside className="absolute inset-y-0 left-0 w-[min(18rem,85vw)] animate-slide-in-left shadow-2xl">
             <button
               onClick={() => setDrawer(false)}
               className="absolute right-3 top-4 z-10 rounded-md p-1 text-chrome-muted hover:bg-white/10 hover:text-chrome-foreground"
@@ -251,16 +266,25 @@ export function AppLayout() {
             </Button>
           </div>
         )}
-        <header className="glass sticky top-0 z-20 flex h-14 items-center justify-between border-b px-4 md:px-8">
+        <header className="glass sticky top-0 z-20 flex h-14 items-center gap-1 border-b px-3 md:px-8">
           <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setDrawer(true)} aria-label="菜单">
             <Menu className="h-5 w-5" />
           </Button>
+          {/* On phones the sidebar (and its brand) is hidden — keep a compact mark here. */}
+          <Link to="/account" className="flex items-center gap-2 md:hidden" aria-label="返回个人中心">
+            <span className="brand-gradient flex h-7 w-7 items-center justify-center rounded-md text-white">
+              <ShieldCheck className="h-4 w-4" />
+            </span>
+            <span className="font-mono text-[13px] font-semibold tracking-tight">
+              TRANS<span className="text-primary">CIRCLE</span>
+            </span>
+          </Link>
           <div className="ml-auto flex items-center gap-1.5">
             <ThemeToggle />
             <UserMenu />
           </div>
         </header>
-        <main className="flex-1 px-4 py-7 md:px-8">
+        <main className="flex-1 px-4 py-6 md:px-8 md:py-7">
           <div className="mx-auto max-w-5xl">
             <Outlet />
           </div>

@@ -192,7 +192,7 @@ export function UserDetailPage() {
 
   return (
     <div>
-      <div className="flex items-start gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
         <Avatar src={user.data.avatar_url} name={user.data.display_name || user.data.username} size="lg" />
         <div className="min-w-0 flex-1">
           <PageHeader
@@ -260,11 +260,11 @@ export function UserDetailPage() {
               <Field label="邮箱">
                 <Input value={basic.email} type="email" onChange={(e) => setBasic({ ...basic, email: e.target.value })} />
               </Field>
-              <div className="flex items-center justify-between rounded-lg border p-3 text-sm">
+              <div className="flex items-center justify-between gap-3 rounded-lg border p-3 text-sm">
                 <span>首次登录强制改密</span>
                 <Switch checked={basic.force_password_change} onCheckedChange={(v) => setBasic({ ...basic, force_password_change: v })} />
               </div>
-              <div className="flex items-center justify-between rounded-lg border p-3 text-sm">
+              <div className="flex items-center justify-between gap-3 rounded-lg border p-3 text-sm">
                 <span>要求绑定多因素认证 (MFA)</span>
                 <Switch checked={basic.must_enroll_mfa} onCheckedChange={(v) => setBasic({ ...basic, must_enroll_mfa: v })} />
               </div>
@@ -451,7 +451,7 @@ function AppScopedAssignments({
     <Card>
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-3">
         <CardTitle>按应用直接授权</CardTitle>
-        <Select value={appId} onValueChange={setAppId} className="w-full max-w-[240px]" options={apps.map((a) => ({ value: a.id, label: a.display_name }))} />
+        <Select value={appId} onValueChange={setAppId} className="w-full sm:max-w-[240px]" options={apps.map((a) => ({ value: a.id, label: a.display_name }))} />
       </CardHeader>
       <CardContent className="grid gap-6 md:grid-cols-2">
         <div>

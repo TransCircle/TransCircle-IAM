@@ -71,7 +71,9 @@ export function Dialog({
 
   if (!render) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    // Mobile: bottom sheet (full width, slides up, thumb-reachable buttons).
+    // ≥sm: centered modal. dvh keeps it visible above the soft keyboard / URL bar.
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
       <div
         className={cn(
           "absolute inset-0 bg-[hsl(192_30%_6%/0.55)] transition-opacity duration-200",
@@ -86,8 +88,9 @@ export function Dialog({
         aria-label={title}
         tabIndex={-1}
         className={cn(
-          "bracket-frame relative z-10 max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-lg border bg-card p-6 shadow-2xl shadow-black/25 outline-none transition-all duration-200",
-          show ? "translate-y-0 scale-100 opacity-100" : "translate-y-3 scale-[0.98] opacity-0",
+          "bracket-frame relative z-10 max-h-[88vh] w-full max-w-lg overflow-y-auto border bg-card shadow-2xl shadow-black/25 outline-none transition-all duration-200 supports-[height:100dvh]:max-h-[calc(100dvh-2.5rem)] sm:supports-[height:100dvh]:max-h-[88dvh]",
+          "rounded-t-lg border-b-0 p-5 pb-6 sm:rounded-lg sm:border-b sm:p-6",
+          show ? "translate-y-0 scale-100 opacity-100" : "translate-y-6 opacity-0 sm:translate-y-3 sm:scale-[0.98]",
           className
         )}
       >
