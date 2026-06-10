@@ -385,6 +385,13 @@ func (h *Handlers) mutateAssignment(w http.ResponseWriter, r *http.Request, kind
 			return err
 		}
 	}
+	if kind == "groups" {
+		// Joining a group that confers admin/super_admin must clear the same
+		// bar as granting those roles directly.
+		if err := h.guardPrivilegedGroupMembership(ctx, by, req.ID); err != nil {
+			return err
+		}
+	}
 	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if err := fn(ctx, tx, userID, req.ID, by); err != nil {
 			return err
@@ -428,6 +435,13 @@ func (h *Handlers) mutateAssignmentPath(w http.ResponseWriter, r *http.Request, 
 	}
 	if param == "permID" {
 		if err := h.assertSystemPermLocked(ctx, userID, target); err != nil {
+			return err
+		}
+	}
+	if param == "groupID" {
+		// Leaving/removing from a privileged group is equivalent to revoking
+		// admin/super_admin — same control as the direct role path.
+		if err := h.guardPrivilegedGroupMembership(ctx, actor, target); err != nil {
 			return err
 		}
 	}

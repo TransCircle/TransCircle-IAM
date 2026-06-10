@@ -35,13 +35,23 @@ func (h *Handlers) handleStepUpTOTP(w http.ResponseWriter, r *http.Request) erro
 	}
 	ctx := r.Context()
 	p, _ := authctx.From(ctx)
+	// Step-up runs inside an authenticated session, so without its own lockout
+	// a stolen-but-stale session could brute-force TOTP to unlock every
+	// step-up-gated action. Same counter family as the login second factor.
+	if locked, _ := h.Lockout.Locked(ctx, mfaLockKeys(ctx, p.UserID)...); locked {
+		h.Audit.Log(ctx, audit.Event{Action: "auth.stepup_locked", Result: audit.ResultDenied, ActorLabel: p.Username})
+		return mfaLockedErr()
+	}
 	ok, err := h.TOTP.Verify(ctx, h.Store, p.UserID, req.Code)
 	if err != nil {
 		return err
 	}
 	if !ok {
+		h.Lockout.RecordFailure(ctx, mfaLockKeys(ctx, p.UserID)...)
+		h.Audit.Log(ctx, audit.Event{Action: "auth.stepup_failure", Result: audit.ResultFailure, ActorLabel: p.Username, Metadata: map[string]any{"factor": "totp"}})
 		return httpx.NewError(http.StatusUnauthorized, "invalid_code", "验证码错误")
 	}
+	h.Lockout.Reset(ctx, mfaLockKeys(ctx, p.UserID)...)
 	return h.completeStepUp(w, r, p, "otp")
 }
 

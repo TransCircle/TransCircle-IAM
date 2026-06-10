@@ -449,6 +449,16 @@ func (h *Handlers) addGroupMembers(w http.ResponseWriter, r *http.Request) error
 	if _, err := h.Repo.GetGroup(ctx, h.Store.Pool, id); err != nil {
 		return httpx.ErrNotFound
 	}
+	actor := actorID(r)
+	// A privileged group's membership is an admin-role grant in disguise.
+	if err := h.guardPrivilegedGroupMembership(ctx, actor, id); err != nil {
+		return err
+	}
+	for _, uid := range req.UserIDs {
+		if err := h.assertCanManageUser(ctx, actor, uid); err != nil {
+			return err
+		}
+	}
 	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		for _, uid := range req.UserIDs {
 			if err := h.Repo.AddGroupMember(ctx, tx, id, uid); err != nil {
@@ -482,6 +492,13 @@ func (h *Handlers) removeGroupMember(w http.ResponseWriter, r *http.Request) err
 		return err
 	}
 	ctx := r.Context()
+	actor := actorID(r)
+	if err := h.guardPrivilegedGroupMembership(ctx, actor, id); err != nil {
+		return err
+	}
+	if err := h.assertCanManageUser(ctx, actor, userID); err != nil {
+		return err
+	}
 	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if err := h.Repo.RemoveGroupMember(ctx, tx, id, userID); err != nil {
 			return err

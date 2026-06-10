@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/redis/go-redis/v9"
 
@@ -14,6 +15,18 @@ import (
 	"github.com/transcircle/iam/internal/authn"
 	"github.com/transcircle/iam/internal/httpx"
 )
+
+// mfaLockKeys returns the lockout subjects for second-factor guessing. They are
+// deliberately separate from the password lockout keys: a successful password
+// verify resets those, so without a dedicated counter an attacker who knows the
+// password could loop login→one-TOTP-guess indefinitely.
+func mfaLockKeys(ctx context.Context, userID uuid.UUID) []string {
+	return []string{"mfa:user:" + userID.String(), "mfa:ip:" + httpx.ClientIP(ctx)}
+}
+
+func mfaLockedErr() error {
+	return httpx.NewError(http.StatusTooManyRequests, "locked", "验证尝试过于频繁，请稍后再试")
+}
 
 func (h *Handlers) peekTicket(ctx context.Context, t string) (*loginTicket, error) {
 	raw, err := h.Store.Redis.Get(ctx, ticketKey(t)).Bytes()
@@ -42,7 +55,7 @@ func (h *Handlers) completeMFALogin(w http.ResponseWriter, r *http.Request, lt *
 	if err != nil {
 		return err
 	}
-	h.Store.Redis.Del(ctx, ticketKey(lt.Username)) // best-effort cleanup
+	h.Lockout.Reset(ctx, mfaLockKeys(ctx, lt.UserID)...)
 	h.setSessionCookie(w, sess.ID)
 	action, err := h.requiredAction(ctx, user)
 	if err != nil {
@@ -67,11 +80,16 @@ func (h *Handlers) handleLoginTOTP(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return err
 	}
+	if locked, _ := h.Lockout.Locked(ctx, mfaLockKeys(ctx, lt.UserID)...); locked {
+		h.Audit.Log(ctx, audit.Event{Action: "login.mfa_locked", Result: audit.ResultDenied, ActorLabel: lt.Username})
+		return mfaLockedErr()
+	}
 	ok, err := h.TOTP.Verify(ctx, h.Store, lt.UserID, req.Code)
 	if err != nil {
 		return err
 	}
 	if !ok {
+		h.Lockout.RecordFailure(ctx, mfaLockKeys(ctx, lt.UserID)...)
 		h.Audit.Log(ctx, audit.Event{Action: "login.mfa_failure", Result: audit.ResultFailure, ActorLabel: lt.Username, Metadata: map[string]any{"factor": "totp"}})
 		return httpx.NewError(http.StatusUnauthorized, "invalid_code", "验证码错误")
 	}
@@ -88,11 +106,16 @@ func (h *Handlers) handleLoginRecovery(w http.ResponseWriter, r *http.Request) e
 	if err != nil {
 		return err
 	}
+	if locked, _ := h.Lockout.Locked(ctx, mfaLockKeys(ctx, lt.UserID)...); locked {
+		h.Audit.Log(ctx, audit.Event{Action: "login.mfa_locked", Result: audit.ResultDenied, ActorLabel: lt.Username})
+		return mfaLockedErr()
+	}
 	used, err := h.Recovery.Consume(ctx, h.Store, lt.UserID, req.Code)
 	if err != nil {
 		return err
 	}
 	if !used {
+		h.Lockout.RecordFailure(ctx, mfaLockKeys(ctx, lt.UserID)...)
 		h.Audit.Log(ctx, audit.Event{Action: "login.mfa_failure", Result: audit.ResultFailure, ActorLabel: lt.Username, Metadata: map[string]any{"factor": "recovery"}})
 		return httpx.NewError(http.StatusUnauthorized, "invalid_code", "恢复码无效或已被使用")
 	}

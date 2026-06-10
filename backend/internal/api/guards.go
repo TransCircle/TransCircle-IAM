@@ -86,6 +86,30 @@ func (h *Handlers) guardRoleGrant(ctx context.Context, actor, roleID uuid.UUID) 
 	return nil
 }
 
+// guardPrivilegedGroupMembership closes the group-based escalation path: if a
+// group confers the built-in admin/super_admin roles, changing its membership
+// is equivalent to granting/revoking those roles, so it demands the exact same
+// control as guardRoleGrant — a super-admin actor with fresh step-up. Without
+// this, a plain admin holding iam.users.write/iam.groups.write could add
+// themselves to a privileged group and inherit super-admin.
+func (h *Handlers) guardPrivilegedGroupMembership(ctx context.Context, actor, groupID uuid.UUID) error {
+	roleIDs, err := h.Repo.GroupRoleIDs(ctx, h.Store.Pool, groupID)
+	if err != nil {
+		return err
+	}
+	if !slices.Contains(roleIDs, rbac.SuperAdminRole) && !slices.Contains(roleIDs, rbac.AdminRole) {
+		return nil
+	}
+	super, err := h.isSuperAdmin(ctx, actor)
+	if err != nil {
+		return err
+	}
+	if !super {
+		return httpx.ErrForbidden.WithDetail("该身份组授予管理员角色，仅超级管理员可调整其成员")
+	}
+	return h.Guard.CheckStepUp(ctx)
+}
+
 // assertNotLastSuperAdmin prevents removing the super_admin role from the only
 // remaining holder (avoids a lockout).
 func (h *Handlers) assertNotLastSuperAdmin(ctx context.Context, roleID uuid.UUID) error {
