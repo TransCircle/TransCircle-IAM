@@ -40,6 +40,10 @@ type consentTicket struct {
 	UserID   string   `json:"user_id"`
 	ClientID string   `json:"client_id"`
 	Scopes   []string `json:"scopes"`
+	// Denied tickets carry the user's explicit refusal back to the authorize
+	// endpoint, which then returns error=access_denied to the relying party
+	// instead of leaving its login flow hanging.
+	Denied bool `json:"denied,omitempty"`
 }
 
 const consentTicketTTL = 5 * time.Minute
@@ -47,9 +51,9 @@ const consentTicketTTL = 5 * time.Minute
 func consentTicketKey(token string) string { return "oauth:consent:once:" + token }
 
 // mintConsentTicket stores a single-use ticket and returns its opaque token.
-func (p *Provider) mintConsentTicket(ctx context.Context, userID, clientID string, scopes []string) (string, error) {
+func (p *Provider) mintConsentTicket(ctx context.Context, userID, clientID string, scopes []string, denied bool) (string, error) {
 	token := crypto.RandomToken(24)
-	raw, err := json.Marshal(consentTicket{UserID: userID, ClientID: clientID, Scopes: orEmpty(scopes)})
+	raw, err := json.Marshal(consentTicket{UserID: userID, ClientID: clientID, Scopes: orEmpty(scopes), Denied: denied})
 	if err != nil {
 		return "", err
 	}
@@ -59,31 +63,35 @@ func (p *Provider) mintConsentTicket(ctx context.Context, userID, clientID strin
 	return token, nil
 }
 
-// consumeConsentTicket atomically redeems a one-time consent ticket (GetDel). It
-// returns true only when the ticket exists, belongs to this user + client, and
-// covers every requested scope. Any miss (absent, expired, mismatched, or a
-// Redis error) returns false, which fails safe by re-prompting for consent.
-func (p *Provider) consumeConsentTicket(ctx context.Context, token, userID, clientID string, scopes []string) bool {
+// consumeConsentTicket atomically redeems a one-time consent ticket (GetDel).
+// approved is true only when the ticket exists, belongs to this user + client,
+// covers every requested scope, and was an approval; denied is true for a
+// matching refusal ticket. Any miss (absent, expired, mismatched, or a Redis
+// error) returns (false, false), which fails safe by re-prompting for consent.
+func (p *Provider) consumeConsentTicket(ctx context.Context, token, userID, clientID string, scopes []string) (approved, denied bool) {
 	if token == "" {
-		return false
+		return false, false
 	}
 	raw, err := p.store.Redis.GetDel(ctx, consentTicketKey(token)).Bytes()
 	if err != nil {
-		return false
+		return false, false
 	}
 	var t consentTicket
 	if err := json.Unmarshal(raw, &t); err != nil {
-		return false
+		return false, false
 	}
 	if t.UserID != userID || t.ClientID != clientID {
-		return false
+		return false, false
 	}
 	for _, sc := range scopes {
 		if !slices.Contains(t.Scopes, sc) {
-			return false
+			return false, false
 		}
 	}
-	return true
+	if t.Denied {
+		return false, true
+	}
+	return true, false
 }
 
 type consentScope struct {
@@ -148,7 +156,23 @@ func (p *Provider) handleConsentApprove(w http.ResponseWriter, r *http.Request) 
 		return err
 	}
 	if !req.Approve {
-		return httpx.NewError(http.StatusOK, "denied", "已拒绝授权")
+		// Mint a denial ticket so the authorize endpoint can complete the flow
+		// with error=access_denied (instead of stranding the relying party).
+		token, err := p.mintConsentTicket(ctx, principal.UserID.String(), req.ClientID, req.Scopes, true)
+		if err != nil {
+			return err
+		}
+		err = p.store.WithTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+			return p.audit.Write(ctx, tx, audit.Event{
+				Action: "oauth.consent_denied", TargetType: "client", TargetID: req.ClientID,
+				Metadata: map[string]any{"scopes": req.Scopes},
+			})
+		})
+		if err != nil {
+			return err
+		}
+		httpx.JSON(w, r, http.StatusOK, map[string]string{"status": "denied", "consent_token": token})
+		return nil
 	}
 	current, err := p.currentMappingVersion(ctx)
 	if err != nil {
@@ -176,7 +200,7 @@ func (p *Provider) handleConsentApprove(w http.ResponseWriter, r *http.Request) 
 		return err
 	}
 	// Mint the single-use ticket that lets exactly this authorization proceed.
-	token, err := p.mintConsentTicket(ctx, principal.UserID.String(), req.ClientID, req.Scopes)
+	token, err := p.mintConsentTicket(ctx, principal.UserID.String(), req.ClientID, req.Scopes, false)
 	if err != nil {
 		return err
 	}

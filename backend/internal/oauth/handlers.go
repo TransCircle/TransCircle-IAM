@@ -94,7 +94,14 @@ func (p *Provider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	// again — consent is never silently remembered.
 	if !client.SkipConsent {
 		token := r.URL.Query().Get("consent_token")
-		if !p.consumeConsentTicket(ctx, token, user.ID.String(), client.ClientID, scopes) {
+		approved, denied := p.consumeConsentTicket(ctx, token, user.ID.String(), client.ClientID, scopes)
+		if denied {
+			// The user explicitly refused: complete the flow per spec so the
+			// relying party receives error=access_denied on its redirect_uri.
+			p.oauth2.WriteAuthorizeError(ctx, w, ar, fosite.ErrAccessDenied)
+			return
+		}
+		if !approved {
 			p.redirectToConsent(w, r, client, scopes)
 			return
 		}
