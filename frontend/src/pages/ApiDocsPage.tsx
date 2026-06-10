@@ -117,7 +117,7 @@ export function ApiDocsPage() {
   "grant_types_supported": ["authorization_code","refresh_token","client_credentials"],
   "id_token_signing_alg_values_supported": ["RS256"],
   "code_challenge_methods_supported": ["S256"],
-  "claims_supported": ["sub","name","preferred_username","email","tc_app","tc_roles","tc_permissions","tc_groups","tc_perm_version"]
+  "claims_supported": ["sub","name","preferred_username","picture","email","tc_app","tc_roles","tc_permissions","tc_groups","tc_perm_version"]
 }`}</Code>
             </EndpointDoc>
 
@@ -234,11 +234,18 @@ GET ${base}/oauth2/auth?
   "sub": "<用户ID, UUID>",
   "preferred_username": "zhangsan",   // profile scope
   "name": "张三",                      // profile scope
+  "picture": "${base}/api/v1/avatars/u/<用户ID>", // profile scope: 头像直链（见下）
   "email": "zhangsan@example.com",     // email scope
   "tc_app": "wiki",                    // tc.permissions: 该客户端绑定的应用 key
   "tc_roles": ["editor", "viewer"],    // tc.permissions: 用户在该应用下的角色
   "tc_perm_version": "a1b2c3d4e5f6"    // tc.permissions: 权限指纹，变化即代表权限已变
 }`}</Code>
+            <div className="rounded-md border bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground">
+              <b className="text-foreground">关于 <code>picture</code>（头像）：</b>这是一个<b>稳定且公开</b>的直链
+              <code>{base}/api/v1/avatars/u/&lt;用户ID&gt;</code>，无需任何凭据即可直接用于 <code>&lt;img src&gt;</code>。
+              该地址对每个用户固定不变，但内容<b>随用户更换头像自动更新</b>，因此可放心缓存这个 URL（按需加 CDN/浏览器缓存）。
+              用户未设置头像时该 claim 不出现，且该地址返回 <code>404</code>，请回退到你方的默认头像。
+            </div>
 
             <p className="font-medium text-foreground">步骤 4 · 刷新令牌（需 offline_access）</p>
             <Code>{`curl -X POST ${base}/oauth2/token \\
@@ -262,7 +269,7 @@ GET ${base}/oauth2/auth?
                 </thead>
                 <tbody className="divide-y">
                   <tr><td className="py-1.5 pr-4"><code>openid</code></td><td>必选，签发 ID Token。</td></tr>
-                  <tr><td className="py-1.5 pr-4"><code>profile</code></td><td>返回 <code>name</code>、<code>preferred_username</code>。</td></tr>
+                  <tr><td className="py-1.5 pr-4"><code>profile</code></td><td>返回 <code>name</code>、<code>preferred_username</code>、<code>picture</code>（头像直链）。</td></tr>
                   <tr><td className="py-1.5 pr-4"><code>email</code></td><td>返回 <code>email</code>。</td></tr>
                   <tr><td className="py-1.5 pr-4"><code>offline_access</code></td><td>签发 refresh_token。</td></tr>
                   <tr><td className="py-1.5 pr-4"><code>tc.permissions</code></td><td>返回该应用下的角色、权限、身份组与权限指纹。</td></tr>
@@ -296,6 +303,7 @@ GET ${base}/oauth2/auth?
 {
   "sub": "<用户ID>",
   "preferred_username": "zhangsan",
+  "picture": "${base}/api/v1/avatars/u/<用户ID>",
   "email": "zhangsan@example.com",
   "tc_app": "wiki",
   "tc_roles": ["editor"],

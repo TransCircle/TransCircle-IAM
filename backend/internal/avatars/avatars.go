@@ -33,6 +33,39 @@ var (
 
 const urlPrefix = "/api/v1/avatars/"
 
+// UserURLPrefix is the stable, per-user avatar path. Unlike a file URL (whose
+// random name changes on every upload), this URL is keyed by user id and never
+// changes — it always resolves to the user's current avatar — which makes it a
+// durable value for the OIDC `picture` claim handed to OAuth/OIDC clients.
+const UserURLPrefix = "/api/v1/avatars/u/"
+
+// UserURL builds the absolute, durable per-user avatar URL from the issuer.
+func UserURL(issuer, userID string) string {
+	return strings.TrimRight(issuer, "/") + UserURLPrefix + userID
+}
+
+// fileFromPublicURL extracts and validates the stored filename from a public
+// avatar URL (the value persisted in users.avatar_url). Returns "" if the URL
+// is blank, foreign, or malformed.
+func fileFromPublicURL(publicURL string) string {
+	file := strings.TrimPrefix(publicURL, urlPrefix)
+	if file == "" || file == publicURL || !fileRe.MatchString(file) {
+		return ""
+	}
+	return file
+}
+
+// ServeCurrent streams the avatar backing a stored public URL (the user's
+// current avatar_url). Returns false (caller should 404) when the user has no
+// avatar or the file is missing.
+func ServeCurrent(w http.ResponseWriter, r *http.Request, dataDir, publicURL string) bool {
+	file := fileFromPublicURL(publicURL)
+	if file == "" {
+		return false
+	}
+	return ServeFile(w, r, dataDir, file)
+}
+
 var extByType = map[string]string{
 	"image/png":  "png",
 	"image/jpeg": "jpg",
@@ -126,8 +159,8 @@ func SaveUpload(w http.ResponseWriter, r *http.Request, dataDir string) (string,
 // Remove best-effort deletes the file backing a public avatar URL (used to clean
 // up a user's previous avatar on re-upload). Blank/foreign URLs are ignored.
 func Remove(dataDir, publicURL string) {
-	file := strings.TrimPrefix(publicURL, urlPrefix)
-	if file == "" || file == publicURL || !fileRe.MatchString(file) {
+	file := fileFromPublicURL(publicURL)
+	if file == "" {
 		return
 	}
 	_ = os.Remove(filepath.Join(avatarsDir(dataDir), file))

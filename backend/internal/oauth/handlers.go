@@ -10,6 +10,7 @@ import (
 	"github.com/ory/fosite"
 
 	"github.com/transcircle/iam/internal/authctx"
+	"github.com/transcircle/iam/internal/avatars"
 	"github.com/transcircle/iam/internal/httpx"
 )
 
@@ -47,7 +48,7 @@ func (p *Provider) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 		"id_token_signing_alg_values_supported": []string{"RS256"},
 		"token_endpoint_auth_methods_supported": []string{"client_secret_basic", "client_secret_post", "none"},
 		"code_challenge_methods_supported":      []string{"S256"},
-		"claims_supported":                      []string{"sub", "name", "preferred_username", "email", "tc_app", "tc_roles", "tc_permissions", "tc_groups", "tc_perm_version"},
+		"claims_supported":                      []string{"sub", "name", "preferred_username", "picture", "email", "tc_app", "tc_roles", "tc_permissions", "tc_groups", "tc_perm_version"},
 	}
 	httpx.JSON(w, r, http.StatusOK, doc)
 }
@@ -184,6 +185,9 @@ func (p *Provider) handleUserinfo(w http.ResponseWriter, r *http.Request) {
 			if slices.Contains(granted, "profile") {
 				out["name"] = user.DisplayName
 				out["preferred_username"] = user.Username
+				if user.AvatarURL != "" {
+					out["picture"] = avatars.UserURL(p.cfg.Issuer, user.ID.String())
+				}
 			}
 			if slices.Contains(granted, "email") {
 				out["email"] = user.Email

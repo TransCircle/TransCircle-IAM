@@ -68,6 +68,7 @@ server {
    - 授权端点：`/oauth2/auth`（强制 PKCE，S256）
    - 令牌端点：`/oauth2/token`
    - UserInfo：`/oauth2/userinfo`（返回 `tc_app` / `tc_roles` / `tc_permissions` / `tc_groups`）
+   - 头像：`profile` scope 下，ID Token 与 UserInfo 含 `picture` 声明——一个稳定且公开的头像直链 `/api/v1/avatars/u/<用户ID>`，对每个用户固定不变、随其更换头像自动更新，可直接用于 `<img src>`；用户未设头像时该声明不出现且地址返回 404。
 4. 后端服务也可用 **API 令牌** 直接查询权限（返回 `roles` / `permissions` / `groups`）：
    ```
    GET /api/v1/permissions?user=<用户名|uuid>&app=<应用key>

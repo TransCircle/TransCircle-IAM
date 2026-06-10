@@ -66,6 +66,10 @@ func (h *Handlers) Mount(r chi.Router) {
 			r.Method("POST", "/recovery/generate", httpx.Handler(h.handleGenerateRecovery))
 		})
 	})
+	// Stable per-user avatar (PUBLIC, no session): durable URL for the OIDC
+	// `picture` claim. Always resolves to the user's current avatar, so it is
+	// safe to hand to OAuth/OIDC clients and survives avatar changes.
+	r.Method("GET", "/api/v1/avatars/u/{userID}", httpx.Handler(h.handleServeUserAvatar))
 	h.MountAccount(r)
 }
 

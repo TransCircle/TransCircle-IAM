@@ -197,6 +197,25 @@ func (h *Handlers) handleServeAvatar(w http.ResponseWriter, r *http.Request) err
 	return nil
 }
 
+// handleServeUserAvatar serves a user's CURRENT avatar by user id. This URL is
+// stable (the OIDC `picture` claim) and public so OAuth/OIDC clients can fetch
+// it without an IAM session. 404 when the user has no avatar so the relying
+// party can fall back to its own placeholder.
+func (h *Handlers) handleServeUserAvatar(w http.ResponseWriter, r *http.Request) error {
+	id, err := uuid.Parse(chi.URLParam(r, "userID"))
+	if err != nil {
+		return httpx.ErrNotFound
+	}
+	u, err := h.Repo.GetUser(r.Context(), h.Store.Pool, id)
+	if err != nil {
+		return httpx.ErrNotFound
+	}
+	if !avatars.ServeCurrent(w, r, h.Cfg.DataDir, u.AvatarURL) {
+		return httpx.ErrNotFound
+	}
+	return nil
+}
+
 func (h *Handlers) handleMySessions(w http.ResponseWriter, r *http.Request) error {
 	p, _ := authctx.From(r.Context())
 	list, err := h.Sessions.ListForUser(r.Context(), p.UserID)

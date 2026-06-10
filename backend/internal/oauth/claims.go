@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/transcircle/iam/internal/avatars"
 	"github.com/transcircle/iam/internal/rbac"
 )
 
@@ -81,6 +82,12 @@ func (p *Provider) enrich(ctx context.Context, sess *Session, user *rbac.User, c
 		idExtra["name"] = user.DisplayName
 		idExtra["preferred_username"] = user.Username
 		sess.DefaultSession.Username = user.Username
+		// `picture` is the durable per-user avatar URL (resolves to the current
+		// avatar, survives changes). Omitted when the user has no avatar so RPs
+		// don't receive a 404ing link.
+		if user.AvatarURL != "" {
+			idExtra["picture"] = avatars.UserURL(p.cfg.Issuer, user.ID.String())
+		}
 	}
 	if slices.Contains(scopes, "email") {
 		idExtra["email"] = user.Email
