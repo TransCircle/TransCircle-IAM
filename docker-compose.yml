@@ -60,10 +60,11 @@ services:
       IAM_KEK_ENABLED: ${IAM_KEK_ENABLED:-}
       IAM_KEK_FILE: ${IAM_KEK_FILE:-}
     ports:
-      # 仅绑定到回环地址：你们的 nginx 反代到 127.0.0.1:8080（见 README）。
-      # 不要暴露到 0.0.0.0，否则外部可绕过 nginx 直连后端并伪造 X-Forwarded-For
-      # （污染审计 IP、绕过基于 IP 的锁定/限速）。
-      - "127.0.0.1:${APP_PORT:-8080}:8080"
+      # 发布到宿主机端口，供反代访问。注意：若 nginx 与本服务在同一宿主机的
+      # *容器* 内运行，请勿绑定 127.0.0.1（容器内的回环不是宿主机回环，会导致
+      # 502）。安全收敛优先用宿主机防火墙挡住该端口、或让 nginx 与本服务共用
+      # 同一 docker 网络后直接反代到 app:8080（无需对外发布端口）。
+      - "${APP_PORT:-8080}:8080"
     volumes:
       - ./data/app:/var/lib/iam
     healthcheck:
