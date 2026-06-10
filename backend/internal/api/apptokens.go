@@ -113,7 +113,10 @@ type updateTokenReq struct {
 	Name           string   `json:"name"`
 	Scopes         []string `json:"scopes"`
 	AllowedAppKeys []string `json:"allowed_app_keys"`
-	ExpiresInDays  int      `json:"expires_in_days"` // 0 = never expire
+	// nil = keep the current expiry untouched; 0 = never expire; >0 = re-anchor
+	// to now + N days. Pointer so an edit that doesn't touch the field can't
+	// silently extend a token's life.
+	ExpiresInDays *int `json:"expires_in_days"`
 }
 
 // updateAPIToken edits a token's non-secret config (name, scopes, app allowlist,
@@ -143,16 +146,18 @@ func (h *Handlers) updateAPIToken(w http.ResponseWriter, r *http.Request) error 
 			return httpx.ErrBadRequest.WithDetail("请指定该令牌可访问的应用 key(仅超级管理员可创建不限应用的令牌)")
 		}
 	}
+	setExpiry := req.ExpiresInDays != nil
 	var expires *time.Time
-	if req.ExpiresInDays > 0 {
-		t := time.Now().AddDate(0, 0, req.ExpiresInDays)
+	if setExpiry && *req.ExpiresInDays > 0 {
+		t := time.Now().AddDate(0, 0, *req.ExpiresInDays)
 		expires = &t
 	}
 	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		ct, err := tx.Exec(ctx,
-			`UPDATE api_tokens SET name=$2, scopes=$3, allowed_app_keys=$4, expires_at=$5
+			`UPDATE api_tokens SET name=$2, scopes=$3, allowed_app_keys=$4,
+			        expires_at = CASE WHEN $6::boolean THEN $5 ELSE expires_at END
 			   WHERE id=$1 AND revoked_at IS NULL`,
-			id, req.Name, orEmpty(req.Scopes), orEmpty(req.AllowedAppKeys), expires)
+			id, req.Name, orEmpty(req.Scopes), orEmpty(req.AllowedAppKeys), expires, setExpiry)
 		if err != nil {
 			return err
 		}

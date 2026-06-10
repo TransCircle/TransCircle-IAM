@@ -13,15 +13,12 @@ interface TokenForm {
   name: string;
   apps: string;
   scopes: string;
-  days: number;
+  // Kept as a string: in edit mode "" means "leave the expiry untouched"
+  // (the field is then omitted from the PATCH body entirely).
+  days: string;
 }
 
-const emptyForm: TokenForm = { name: "", apps: "", scopes: "iam.permissions.read", days: 0 };
-
-function remainingDays(expiresAt: string | null): number {
-  if (!expiresAt) return 0;
-  return Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 86400000));
-}
+const emptyForm: TokenForm = { name: "", apps: "", scopes: "iam.permissions.read", days: "0" };
 
 export function ApiTokensPage() {
   const { hasPermission } = useAuth();
@@ -44,7 +41,7 @@ export function ApiTokensPage() {
         name: form.name.trim(),
         scopes: form.scopes.split(",").map((s) => s.trim()).filter(Boolean),
         allowed_app_keys: form.apps.split(",").map((s) => s.trim()).filter(Boolean),
-        expires_in_days: form.days,
+        expires_in_days: Number(form.days) || 0,
       }),
     onSuccess: (r) => {
       setOpen(false);
@@ -59,7 +56,9 @@ export function ApiTokensPage() {
         name: form.name.trim(),
         scopes: form.scopes.split(",").map((s) => s.trim()).filter(Boolean),
         allowed_app_keys: form.apps.split(",").map((s) => s.trim()).filter(Boolean),
-        expires_in_days: form.days,
+        // Omit expiry unless the admin actually typed a value, so an ordinary
+        // edit can't silently re-anchor the token's lifetime.
+        ...(form.days.trim() === "" ? {} : { expires_in_days: Number(form.days) || 0 }),
       }),
     onSuccess: () => {
       setEdit(null);
@@ -82,7 +81,7 @@ export function ApiTokensPage() {
     setOpen(true);
   }
   function openEdit(t: APIToken) {
-    setForm({ name: t.name, apps: (t.allowed_app_keys ?? []).join(", "), scopes: (t.scopes ?? []).join(", "), days: remainingDays(t.expires_at) });
+    setForm({ name: t.name, apps: (t.allowed_app_keys ?? []).join(", "), scopes: (t.scopes ?? []).join(", "), days: "" });
     setEdit(t);
   }
   function submitCreate() {
@@ -109,8 +108,17 @@ export function ApiTokensPage() {
       <Field label="限定应用 (应用 key，逗号分隔)" help="留空表示可查询全部应用；填写后该令牌只能查询这些应用的用户权限。">
         <Input value={form.apps} onChange={(e) => setForm({ ...form, apps: e.target.value })} />
       </Field>
-      <Field label="有效天数 (0 = 永久)" help="编辑时填写的天数从现在重新计算到期时间。">
-        <Input type="number" inputMode="numeric" value={form.days} onChange={(e) => setForm({ ...form, days: Number(e.target.value) })} />
+      <Field
+        label={edit ? "有效天数（留空 = 保持不变，0 = 永久）" : "有效天数 (0 = 永久)"}
+        help={edit ? "仅当填写时才会以「现在 + 天数」重新计算到期时间；留空则维持原有效期。" : undefined}
+      >
+        <Input
+          type="number"
+          inputMode="numeric"
+          value={form.days}
+          placeholder={edit ? "不修改" : undefined}
+          onChange={(e) => setForm({ ...form, days: e.target.value })}
+        />
       </Field>
     </div>
   );
@@ -146,12 +154,12 @@ export function ApiTokensPage() {
         ]}
       />
 
-      <Dialog open={open} onClose={() => setOpen(false)} title="新建 API 令牌" onSubmit={submitCreate}
+      <Dialog open={open} onClose={() => setOpen(false)} title="新建 API 令牌" onSubmit={submitCreate} submitting={create.isPending}
         footer={<><Button variant="outline" type="button" onClick={() => setOpen(false)}>取消</Button><Button type="submit" loading={create.isPending}>创建</Button></>}>
         {formFields}
       </Dialog>
 
-      <Dialog open={!!edit} onClose={() => setEdit(null)} title={`编辑令牌 · ${edit?.name ?? ""}`} onSubmit={submitEdit}
+      <Dialog open={!!edit} onClose={() => setEdit(null)} title={`编辑令牌 · ${edit?.name ?? ""}`} onSubmit={submitEdit} submitting={update.isPending}
         footer={<><Button variant="outline" type="button" onClick={() => setEdit(null)}>取消</Button><Button type="submit" loading={update.isPending}>保存</Button></>}>
         {formFields}
       </Dialog>
@@ -167,9 +175,9 @@ export function ApiTokensPage() {
         loading={revoke.isPending}
       />
 
-      <Dialog open={!!created} onClose={() => setCreated(null)} title="令牌已创建（仅显示一次）" footer={<Button onClick={() => setCreated(null)}>我已保存</Button>}>
-        <p className="text-sm text-muted-foreground">请立即保存，关闭后无法再次查看。在请求头中使用 <code>Authorization: Bearer &lt;token&gt;</code>。</p>
-        <div className="mt-3 flex items-center justify-between gap-2 break-all rounded-lg border bg-muted/40 p-3 font-mono text-sm">
+      <Dialog open={!!created} onClose={() => setCreated(null)} title="令牌已创建（仅显示一次）" lockClose footer={<Button onClick={() => setCreated(null)}>我已保存</Button>}>
+        <p className="text-sm text-muted-foreground">请立即保存，关闭后无法再次查看。在请求头中使用 <code className="font-mono">Authorization: Bearer &lt;token&gt;</code>。</p>
+        <div className="mt-3 flex items-center justify-between gap-2 break-all rounded-md border bg-muted/40 p-3 font-mono text-sm">
           <span className="break-all">{created}</span>
           {created && <CopyButton value={created} />}
         </div>
