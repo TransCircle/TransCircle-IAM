@@ -129,10 +129,23 @@ func (s *storage) get(ctx context.Context, key string, session fosite.Session) (
 func (s *storage) GetClient(ctx context.Context, id string) (fosite.Client, error) {
 	c, err := s.clients.Get(ctx, s.st.Pool, id)
 	if err != nil {
-		return nil, fosite.ErrNotFound
+		// fosite reports every GetClient failure to the RP as the same opaque
+		// "The requested OAuth 2.0 Client does not exist." With debug messages off
+		// in prod, a genuinely missing client is indistinguishable from a real
+		// lookup failure (DB connectivity, a scan/type error). Split the two so the
+		// operator can actually tell them apart from the logs.
+		if errors.Is(err, ErrNotFound) {
+			logging.From(ctx).Warn("oauth: client lookup found no such client", "client_id", id)
+			return nil, fosite.ErrNotFound
+		}
+		logging.From(ctx).Error("oauth: client lookup failed", "client_id", id, "err", err)
+		return nil, fosite.ErrServerError.WithWrap(err).WithDebug(err.Error())
 	}
 	if !c.Active {
-		return nil, fosite.ErrInvalidClient
+		// The client exists but is disabled. This is a common reason an operator
+		// sees "client does not exist" for a client they know is configured.
+		logging.From(ctx).Warn("oauth: client is inactive; rejecting request", "client_id", id)
+		return nil, fosite.ErrInvalidClient.WithHint("The OAuth 2.0 Client is disabled.")
 	}
 	return s.toFositeClient(ctx, c), nil
 }
