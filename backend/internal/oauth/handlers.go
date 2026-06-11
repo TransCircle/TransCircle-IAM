@@ -13,6 +13,7 @@ import (
 	"github.com/transcircle/iam/internal/authctx"
 	"github.com/transcircle/iam/internal/avatars"
 	"github.com/transcircle/iam/internal/httpx"
+	"github.com/transcircle/iam/internal/logging"
 )
 
 // Mount registers the OAuth2/OIDC protocol endpoints + discovery + JWKS.
@@ -62,6 +63,12 @@ func (p *Provider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ar, err := p.oauth2.NewAuthorizeRequest(ctx, r)
 	if err != nil {
+		// Name the relying party that sent the broken request: with several apps
+		// and recreated clients, the bare RFC 6749 error is undebuggable from logs.
+		logging.From(ctx).Warn("oauth: authorize request rejected",
+			"client_id", r.FormValue("client_id"),
+			"redirect_uri", r.FormValue("redirect_uri"),
+			"err", err.Error())
 		p.oauth2.WriteAuthorizeError(ctx, w, ar, err)
 		return
 	}

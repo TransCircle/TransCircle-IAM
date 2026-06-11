@@ -135,7 +135,22 @@ func (s *storage) GetClient(ctx context.Context, id string) (fosite.Client, erro
 		// lookup failure (DB connectivity, a scan/type error). Split the two so the
 		// operator can actually tell them apart from the logs.
 		if errors.Is(err, ErrNotFound) {
-			logging.From(ctx).Warn("oauth: client lookup found no such client", "client_id", id)
+			// A missing client is far more often "an admin deleted it but a relying
+			// party still uses the old id" than a typo. Answer that directly in the
+			// log, so the operator doesn't chase a phantom lookup bug.
+			var deletedAt time.Time
+			var deletedBy string
+			derr := s.st.Pool.QueryRow(ctx,
+				`SELECT occurred_at, actor_label FROM audit_log
+				  WHERE action='iam.client.delete' AND target_type='client' AND target_id=$1
+				  ORDER BY occurred_at DESC LIMIT 1`, id).Scan(&deletedAt, &deletedBy)
+			if derr == nil {
+				logging.From(ctx).Warn("oauth: client lookup found no such client (client was deleted; the relying party still uses its old client_id)",
+					"client_id", id, "deleted_at", deletedAt, "deleted_by", deletedBy)
+			} else {
+				logging.From(ctx).Warn("oauth: client lookup found no such client (no deletion record; this client_id was never created here — check the relying party's configuration)",
+					"client_id", id)
+			}
 			return nil, fosite.ErrNotFound
 		}
 		logging.From(ctx).Error("oauth: client lookup failed", "client_id", id, "err", err)

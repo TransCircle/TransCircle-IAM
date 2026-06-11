@@ -11,6 +11,7 @@ import (
 
 	"github.com/transcircle/iam/internal/audit"
 	"github.com/transcircle/iam/internal/httpx"
+	"github.com/transcircle/iam/internal/logging"
 	"github.com/transcircle/iam/internal/oauth"
 )
 
@@ -88,6 +89,9 @@ func (h *Handlers) createClient(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	// Client lifecycle also goes to the operational log (audit_log is DB-only),
+	// so "no such client" warnings at /oauth2/auth can be correlated in one place.
+	logging.From(ctx).Info("oauth client created", "client_id", client.ClientID, "client_name", client.ClientName)
 	httpx.JSON(w, r, http.StatusCreated, map[string]any{"client": client, "client_secret": secret})
 	return nil
 }
@@ -108,6 +112,7 @@ func (h *Handlers) updateClient(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	logging.From(ctx).Info("oauth client updated", "client_id", clientID)
 	httpx.NoContent(w)
 	return nil
 }
@@ -124,6 +129,7 @@ func (h *Handlers) deleteClient(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	logging.From(ctx).Info("oauth client deleted", "client_id", clientID)
 	httpx.NoContent(w)
 	return nil
 }
@@ -143,6 +149,7 @@ func (h *Handlers) rotateClientSecret(w http.ResponseWriter, r *http.Request) er
 	if err != nil {
 		return err
 	}
+	logging.From(ctx).Info("oauth client secret rotated", "client_id", clientID)
 	httpx.JSON(w, r, http.StatusOK, map[string]string{"client_secret": secret})
 	return nil
 }

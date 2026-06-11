@@ -73,14 +73,14 @@ export function ClientsPage() {
       />
 
       <CreateClientDialog open={open} onClose={() => setOpen(false)} apps={apps.data ?? []}
-        onCreated={(s) => { setOpen(false); qc.invalidateQueries({ queryKey: ["clients"] }); if (s) setSecret(s); }} />
+        onCreated={(s) => { setOpen(false); qc.invalidateQueries({ queryKey: ["clients"] }); setSecret(s); }} />
 
       <ConfirmDialog
         open={!!confirm}
         onClose={() => setConfirm(null)}
         onConfirm={() => confirm && del.mutate(confirm.client_id)}
         title={`删除客户端「${confirm?.client_name}」?`}
-        description="删除后使用该客户端的应用将无法再登录。此操作需要二次验证。"
+        description={`Client ID: ${confirm?.client_id ?? ""} — 删除后使用该 ID 的应用将无法再登录,请确认它不是正在使用的客户端。此操作需要二次验证。`}
         confirmLabel="删除"
         destructive
         loading={del.isPending}
@@ -89,14 +89,30 @@ export function ClientsPage() {
       <Dialog
         open={!!secret}
         onClose={() => setSecret(null)}
-        title="客户端密钥（仅显示一次）"
+        title="客户端创建成功"
         lockClose
         footer={<Button onClick={() => setSecret(null)}>我已保存</Button>}
       >
-        <p className="text-sm text-muted-foreground">请立即复制保存，关闭后无法再次查看。</p>
-        <div className="mt-3 flex items-center justify-between gap-2 break-all rounded-md border bg-muted/40 p-3 font-mono text-sm">
-          <span className="break-all">{secret?.secret}</span>
-          {secret && <CopyButton value={secret.secret} />}
+        <p className="text-sm text-muted-foreground">
+          请使用下方的 Client ID 配置接入应用{secret?.secret ? "；密钥仅显示一次，关闭后无法再次查看" : ""}。
+        </p>
+        <div className="mt-3 space-y-3">
+          <div>
+            <div className="mb-1 text-xs font-medium text-muted-foreground">Client ID</div>
+            <div className="flex items-center justify-between gap-2 break-all rounded-md border bg-muted/40 p-3 font-mono text-sm">
+              <span className="break-all">{secret?.id}</span>
+              {secret && <CopyButton value={secret.id} />}
+            </div>
+          </div>
+          {secret?.secret && (
+            <div>
+              <div className="mb-1 text-xs font-medium text-muted-foreground">客户端密钥（仅显示一次）</div>
+              <div className="flex items-center justify-between gap-2 break-all rounded-md border bg-muted/40 p-3 font-mono text-sm">
+                <span className="break-all">{secret.secret}</span>
+                <CopyButton value={secret.secret} />
+              </div>
+            </div>
+          )}
         </div>
       </Dialog>
     </div>
@@ -109,7 +125,7 @@ function CreateClientDialog({
   open: boolean;
   onClose: () => void;
   apps: Application[];
-  onCreated: (secret: { id: string; secret: string } | null) => void;
+  onCreated: (secret: { id: string; secret: string }) => void;
 }) {
   const { toast } = useToast();
   const [name, setName] = React.useState("");
@@ -142,8 +158,9 @@ function CreateClientDialog({
         skip_consent: skipConsent,
       }),
     onSuccess: (r) => {
-      const s = r.data.client_secret ? { id: r.data.client.client_id, secret: r.data.client_secret } : null;
-      onCreated(s);
+      // Always surface the new client_id (not just the secret): users otherwise
+      // fish it out of the list afterwards and can grab a same-named old client's id.
+      onCreated({ id: r.data.client.client_id, secret: r.data.client_secret || "" });
     },
     onError: (e) => toast(errorMessage(e), "error"),
   });

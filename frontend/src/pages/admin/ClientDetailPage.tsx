@@ -338,7 +338,7 @@ export function ClientDetailPage() {
         onClose={() => setConfirmDel(false)}
         onConfirm={() => del.mutate()}
         title={`删除客户端「${c.client_name}」?`}
-        description="删除后使用该客户端的应用将无法再登录。此操作需要二次验证。"
+        description={`Client ID: ${c.client_id} — 删除后使用该 ID 的应用将无法再登录,请确认它不是正在使用的客户端。此操作需要二次验证。`}
         confirmLabel="删除"
         destructive
         loading={del.isPending}
