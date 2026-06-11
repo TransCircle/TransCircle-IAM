@@ -43,6 +43,31 @@ func NewSession(subject, kid, issuer string) *Session {
 	}
 }
 
+// SetSigningKID re-stamps the signing-key id onto both the ID-token and JWT
+// access-token headers. Sessions persist in Redis across signing-key rotations
+// while fosite always signs with the CURRENT active key, so the kid recorded at
+// authorize time goes stale after a rotation: tokens would carry the old kid
+// with a new-key signature, and relying parties verifying against JWKS reject
+// them. Call this at mint time with the active key's kid.
+func (s *Session) SetSigningKID(kid string) {
+	if s.DefaultSession != nil {
+		if s.DefaultSession.Headers == nil {
+			s.DefaultSession.Headers = &jwt.Headers{}
+		}
+		if s.DefaultSession.Headers.Extra == nil {
+			s.DefaultSession.Headers.Extra = map[string]any{}
+		}
+		s.DefaultSession.Headers.Extra["kid"] = kid
+	}
+	if s.JWTHeader == nil {
+		s.JWTHeader = &jwt.Headers{}
+	}
+	if s.JWTHeader.Extra == nil {
+		s.JWTHeader.Extra = map[string]any{}
+	}
+	s.JWTHeader.Extra["kid"] = kid
+}
+
 // GetJWTClaims implements oauth2.JWTSessionContainer (access-token claims).
 func (s *Session) GetJWTClaims() jwt.JWTClaimsContainer {
 	if s.JWTClaims == nil {

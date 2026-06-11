@@ -42,6 +42,7 @@ export function SecurityKeysPage() {
         <CardHeader><CardTitle>数据加密密钥 (DEK)</CardTitle></CardHeader>
         <CardContent className="text-sm text-muted-foreground">
           当前活跃 DEK 版本：<b className="text-foreground">v{data?.active_dek_version ?? "—"}</b>。所有入库秘密均以 AES-256-GCM 加密保存。
+          DEK 仅在初始化时生成、不支持在线轮换（上方按钮轮换的是 OIDC 签名密钥），版本号不变属正常现象。
         </CardContent>
       </Card>
       <DataTable<SigningKeyInfo>
@@ -69,7 +70,7 @@ export function SecurityKeysPage() {
         onConfirm={() => rotate.mutate()}
         loading={rotate.isPending}
         title="轮换 OIDC 签名密钥？"
-        description="将生成新的活跃签名密钥；旧密钥进入「上一版」继续用于验签，已签发令牌不受影响。"
+        description="将生成新的活跃签名密钥；旧密钥进入「上一版」继续用于验签。注意：缓存了 JWKS 且不会自动刷新的接入应用需要重新拉取 JWKS；再次轮换会让「上一版」退役，使其签发的存量令牌验签失效。"
         confirmLabel="轮换"
       />
     </div>

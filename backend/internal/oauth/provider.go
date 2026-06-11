@@ -82,7 +82,7 @@ func NewProvider(ctx context.Context, d Deps) (*Provider, error) {
 		SendDebugMessagesToClients:     !d.Cfg.IsProd(),
 	}
 
-	st := newStorage(d.Store, d.Clients, storageConfig{
+	st := newStorage(d.Store, d.Clients, d.Keys, storageConfig{
 		accessTTL:  d.Cfg.AccessTokenTTL,
 		refreshTTL: d.Cfg.RefreshTokenTTL,
 		codeTTL:    10 * time.Minute,

@@ -1,6 +1,7 @@
 package oauth
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"slices"
@@ -208,6 +209,7 @@ func (p *Provider) handleToken(w http.ResponseWriter, r *http.Request) {
 	sess := NewSession("", p.ks.ActiveSigningKey().KID, p.cfg.Issuer)
 	ar, err := p.oauth2.NewAccessRequest(ctx, r, sess)
 	if err != nil {
+		p.logTokenError(ctx, r, "oauth: token request rejected", err)
 		p.oauth2.WriteAccessError(ctx, w, ar, err)
 		return
 	}
@@ -232,10 +234,33 @@ func (p *Provider) handleToken(w http.ResponseWriter, r *http.Request) {
 	}
 	resp, err := p.oauth2.NewAccessResponse(ctx, ar)
 	if err != nil {
+		p.logTokenError(ctx, r, "oauth: token response failed", err)
 		p.oauth2.WriteAccessError(ctx, w, ar, err)
 		return
 	}
 	p.oauth2.WriteAccessResponse(ctx, w, ar, resp)
+}
+
+// logTokenError records token-endpoint failures with the underlying RFC 6749
+// error and hint. In prod, debug messages are withheld from clients, so without
+// this the server has no record of WHY an exchange failed and relying parties
+// only see an opaque error.
+func (p *Provider) logTokenError(ctx context.Context, r *http.Request, msg string, err error) {
+	clientID := r.PostFormValue("client_id")
+	if clientID == "" {
+		if u, _, ok := r.BasicAuth(); ok {
+			if dec, derr := url.QueryUnescape(u); derr == nil {
+				clientID = dec
+			}
+		}
+	}
+	rfc := fosite.ErrorToRFC6749Error(err)
+	logging.From(ctx).Warn(msg,
+		"grant_type", r.PostFormValue("grant_type"),
+		"client_id", clientID,
+		"error", rfc.ErrorField,
+		"hint", rfc.HintField,
+		"debug", rfc.DebugField)
 }
 
 func (p *Provider) handleUserinfo(w http.ResponseWriter, r *http.Request) {

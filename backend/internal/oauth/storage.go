@@ -12,6 +12,7 @@ import (
 	"github.com/ory/fosite"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/transcircle/iam/internal/keys"
 	"github.com/transcircle/iam/internal/logging"
 	"github.com/transcircle/iam/internal/store"
 )
@@ -22,6 +23,7 @@ import (
 type storage struct {
 	st      *store.Store
 	clients *ClientService
+	ks      *keys.KeyStore
 	cfg     storageConfig
 }
 
@@ -31,8 +33,8 @@ type storageConfig struct {
 	codeTTL    time.Duration
 }
 
-func newStorage(st *store.Store, clients *ClientService, cfg storageConfig) *storage {
-	return &storage{st: st, clients: clients, cfg: cfg}
+func newStorage(st *store.Store, clients *ClientService, ks *keys.KeyStore, cfg storageConfig) *storage {
+	return &storage{st: st, clients: clients, ks: ks, cfg: cfg}
 }
 
 // ----- serialization -----
@@ -77,6 +79,15 @@ func (s *storage) fromStored(ctx context.Context, sr storedRequest, session fosi
 	if len(sr.Session) > 0 && session != nil {
 		if err := json.Unmarshal(sr.Session, session); err != nil {
 			return nil, err
+		}
+		// The stored session carries the kid that was active when it was created,
+		// but fosite signs every newly minted JWT with the CURRENT active key. After
+		// a signing-key rotation the stale kid would point relying parties at the
+		// wrong JWKS entry, failing all in-flight code exchanges and every refresh
+		// of a pre-rotation session. Re-stamp at rehydration so header and signature
+		// always agree.
+		if s2, ok := session.(*Session); ok {
+			s2.SetSigningKID(s.ks.ActiveSigningKey().KID)
 		}
 	}
 	req := &fosite.Request{
