@@ -90,11 +90,12 @@ export function UserDetailPage() {
   const isSelf = me?.user.id === id;
   // Granular gates (feature 7): a super-admin TARGET keeps basic info / password
   // reset / disable locked, but its group membership and non-system app role &
-  // permission assignments become editable (the backend already permits a
-  // super-admin actor to manage anyone).
+  // permission assignments stay editable — including by oneself (the backend
+  // permits self-management and locks the system app separately), so a lone
+  // super admin can still grant themselves other applications' permissions.
   const canEditBasic = canWrite && !isSelf && !targetIsSuper;
-  const canManageMembership = canWrite && !isSelf;
-  const canManageAppAssign = canWrite && !isSelf;
+  const canManageMembership = canWrite;
+  const canManageAppAssign = canWrite;
 
   const groupToggle = useAssignmentToggle(qc, id, toast, "groups", `/api/v1/admin/users/${id}/groups`);
   const roleToggle = useAssignmentToggle(qc, id, toast, "roles", `/api/v1/admin/users/${id}/roles`);
@@ -436,15 +437,23 @@ function AppScopedAssignments({
   });
 
   // The IAM-self (system) application's role + permission grants stay locked for a
-  // super-admin target (feature 7); the backend does not reject direct system
-  // permission grants, so this visual lock is the enforcement point. Harmless for
-  // a super admin, who already holds every system permission via their role.
+  // super-admin target (feature 7); the backend rejects direct system permission
+  // grants on super-admin targets too. Harmless for a super admin, who already
+  // holds every system permission via their role.
   const currentApp = apps.find((a) => a.id === appId);
   const sysLocked = !!currentApp?.is_system && targetIsSuper;
 
   function roleLocked(r: Role) {
-    // Only super-admins may assign the built-in admin / super_admin roles.
-    return (r.id === SUPER_ADMIN_ROLE_ID || r.id === ADMIN_ROLE_ID) && !isSuperAdmin;
+    // super_admin can never be granted from the frontend (backend refuses it
+    // too); the admin role stays restricted to super-admin actors.
+    if (r.id === SUPER_ADMIN_ROLE_ID) return true;
+    return r.id === ADMIN_ROLE_ID && !isSuperAdmin;
+  }
+
+  function roleLockHint(r: Role) {
+    if (r.id === SUPER_ADMIN_ROLE_ID) return "超级管理员角色不可在前端授予。";
+    if (sysLocked) return "IAM 系统应用的角色与权限不可在此修改。";
+    return "仅超级管理员可授予/移除管理员角色。";
   }
 
   return (
@@ -463,7 +472,7 @@ function AppScopedAssignments({
                 checked={roleIds.has(r.id)}
                 disabled={!canWrite}
                 locked={roleLocked(r) || sysLocked}
-                lockedHint={sysLocked ? "IAM 系统应用的角色与权限不可在此修改。" : "仅超级管理员可授予管理员/超级管理员角色。"}
+                lockedHint={roleLockHint(r)}
                 onToggle={(checked) => onToggleRole(r.id, checked)}
               >
                 {r.display_name} <Badge variant="muted">{r.key}</Badge>

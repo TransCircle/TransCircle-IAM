@@ -183,7 +183,15 @@ export function GroupDetailPage() {
   const roleIds = new Set(detail.data.role_ids ?? []);
   const members = detail.data.members ?? [];
   const memberIds = new Set(members.map((m) => m.id));
-  const roleLocked = (r: Role) => (r.id === SUPER_ADMIN_ROLE_ID || r.id === ADMIN_ROLE_ID) && !isSuperAdmin;
+  // super_admin can never be granted to a group from the frontend (backend
+  // refuses it too); a legacy group that already confers it may only be
+  // stripped of it, by a super admin. The admin role stays super-admin-only.
+  const roleLocked = (r: Role) =>
+    r.id === SUPER_ADMIN_ROLE_ID
+      ? !(roleIds.has(r.id) && isSuperAdmin)
+      : r.id === ADMIN_ROLE_ID && !isSuperAdmin;
+  const roleLockHint = (r: Role) =>
+    r.id === SUPER_ADMIN_ROLE_ID ? "超级管理员角色不可在前端授予。" : "仅超级管理员可将管理员角色授予身份组。";
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -280,7 +288,7 @@ export function GroupDetailPage() {
                   checked={roleIds.has(r.id)}
                   disabled={!canWrite}
                   locked={roleLocked(r)}
-                  lockedHint="仅超级管理员可将管理员/超级管理员角色授予身份组。"
+                  lockedHint={roleLockHint(r)}
                   onToggle={(checked) => toggleRole.mutate({ role: r, checked })}
                 >
                   {r.display_name} <Badge variant="muted">{r.key}</Badge>

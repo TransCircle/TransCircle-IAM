@@ -459,8 +459,9 @@ func (h *Handlers) addGroupMembers(w http.ResponseWriter, r *http.Request) error
 		return httpx.ErrNotFound
 	}
 	actor := actorID(r)
-	// A privileged group's membership is an admin-role grant in disguise.
-	if err := h.guardPrivilegedGroupMembership(ctx, actor, id); err != nil {
+	// A privileged group's membership is an admin-role grant in disguise; a
+	// super_admin-conferring group cannot gain members at all.
+	if err := h.guardGroupJoin(ctx, actor, id); err != nil {
 		return err
 	}
 	for _, uid := range req.UserIDs {
@@ -585,6 +586,11 @@ func (h *Handlers) addGroupRole(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	ctx := r.Context()
+	// Attaching super_admin to a group would turn its membership into a
+	// super-admin grant — refused outright, same as the direct-role path.
+	if err := assertSuperAdminRoleNotGrantable(req.ID); err != nil {
+		return err
+	}
 	if err := h.guardRoleGrant(ctx, actorID(r), req.ID); err != nil {
 		return err
 	}

@@ -417,10 +417,14 @@ func (h *Handlers) mutateAssignment(w http.ResponseWriter, r *http.Request, kind
 		return err
 	}
 	if kind == "roles" {
+		// super_admin can never be granted via the API (bootstrap-only).
+		if err := assertSuperAdminRoleNotGrantable(req.ID); err != nil {
+			return err
+		}
 		if err := h.assertCanGrantRole(ctx, by, req.ID); err != nil {
 			return err
 		}
-		if req.ID == rbac.SuperAdminRole || req.ID == rbac.AdminRole {
+		if req.ID == rbac.AdminRole {
 			if err := h.Guard.CheckStepUp(ctx); err != nil {
 				return err
 			}
@@ -435,9 +439,9 @@ func (h *Handlers) mutateAssignment(w http.ResponseWriter, r *http.Request, kind
 		}
 	}
 	if kind == "groups" {
-		// Joining a group that confers admin/super_admin must clear the same
-		// bar as granting those roles directly.
-		if err := h.guardPrivilegedGroupMembership(ctx, by, req.ID); err != nil {
+		// Joining a group that confers admin must clear the same bar as granting
+		// the role directly; a super_admin-conferring group cannot be joined at all.
+		if err := h.guardGroupJoin(ctx, by, req.ID); err != nil {
 			return err
 		}
 	}

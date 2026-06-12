@@ -73,6 +73,18 @@ func (h *Handlers) assertCanGrantRole(ctx context.Context, actor, roleID uuid.UU
 	return nil
 }
 
+// assertSuperAdminRoleNotGrantable rejects granting the built-in super_admin
+// role through the admin API entirely: super-admins are produced only by the
+// bootstrap flow, never assigned from the frontend. Revocation is NOT affected
+// and keeps its existing controls (super-admin actor + step-up +
+// last-super-admin survival).
+func assertSuperAdminRoleNotGrantable(roleID uuid.UUID) error {
+	if roleID == rbac.SuperAdminRole {
+		return httpx.ErrForbidden.WithDetail("超级管理员角色不可通过此接口授予，仅能由系统引导流程产生")
+	}
+	return nil
+}
+
 // guardRoleGrant enforces that only super-admins may grant/revoke the built-in
 // admin/super_admin roles, and that doing so requires fresh step-up.
 func (h *Handlers) guardRoleGrant(ctx context.Context, actor, roleID uuid.UUID) error {
@@ -99,6 +111,32 @@ func (h *Handlers) guardPrivilegedGroupMembership(ctx context.Context, actor, gr
 		return err
 	}
 	if !slices.Contains(roleIDs, rbac.SuperAdminRole) && !slices.Contains(roleIDs, rbac.AdminRole) {
+		return nil
+	}
+	super, err := h.isSuperAdmin(ctx, actor)
+	if err != nil {
+		return err
+	}
+	if !super {
+		return httpx.ErrForbidden.WithDetail("该身份组授予管理员角色，仅超级管理员可调整其成员")
+	}
+	return h.Guard.CheckStepUp(ctx)
+}
+
+// guardGroupJoin guards ADDING a member to a group. Joining a group that
+// confers super_admin would be a super-admin grant in disguise, which the API
+// refuses outright (see assertSuperAdminRoleNotGrantable); such legacy groups
+// can only shed members. Admin-conferring groups keep the
+// guardPrivilegedGroupMembership control (super-admin actor + fresh step-up).
+func (h *Handlers) guardGroupJoin(ctx context.Context, actor, groupID uuid.UUID) error {
+	roleIDs, err := h.Repo.GroupRoleIDs(ctx, h.Store.Pool, groupID)
+	if err != nil {
+		return err
+	}
+	if slices.Contains(roleIDs, rbac.SuperAdminRole) {
+		return httpx.ErrForbidden.WithDetail("该身份组授予超级管理员角色，不可通过此接口加入成员")
+	}
+	if !slices.Contains(roleIDs, rbac.AdminRole) {
 		return nil
 	}
 	super, err := h.isSuperAdmin(ctx, actor)
