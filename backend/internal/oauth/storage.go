@@ -229,28 +229,36 @@ func (s *storage) CreateAuthorizeCodeSession(ctx context.Context, code string, r
 }
 
 func (s *storage) GetAuthorizeCodeSession(ctx context.Context, code string, session fosite.Session) (fosite.Requester, error) {
+	// NOTE: fosite calls this TWICE per legitimate exchange (once in the token
+	// request phase, once in the response phase), so this method must be a pure
+	// read. The single-use claim lives in InvalidateAuthorizeCodeSession; putting
+	// any consume-on-read logic here breaks every code exchange on its second read.
 	req, sr, err := s.get(ctx, "oauth:code:"+code, session)
 	if err != nil {
 		return nil, err
 	}
 	if !sr.Active {
-		return req, fosite.ErrInvalidatedAuthorizeCode
-	}
-	// Single-use: atomically claim the code (SET NX) so two concurrent token
-	// requests can never both consume the same authorization code. fosite calls
-	// this once per exchange; a reused/raced code returns the requester plus
-	// ErrInvalidatedAuthorizeCode so fosite revokes any tokens already minted.
-	ok, serr := s.st.Redis.SetNX(ctx, "oauth:code:used:"+code, "1", s.cfg.codeTTL).Result()
-	if serr != nil {
-		return nil, serr
-	}
-	if !ok {
+		// Already consumed: fosite revokes all tokens minted off this request.
 		return req, fosite.ErrInvalidatedAuthorizeCode
 	}
 	return req, nil
 }
 
 func (s *storage) InvalidateAuthorizeCodeSession(ctx context.Context, code string) error {
+	// Single-use: atomically claim the code (SET NX) so two concurrent token
+	// requests can never both consume the same authorization code. fosite calls
+	// Invalidate exactly once per exchange, before any token session is
+	// persisted, which makes it the correct claim point: the race loser errors
+	// out with no tokens while the winner's exchange completes. A genuine later
+	// reuse hits Active=false in GetAuthorizeCodeSession instead, which triggers
+	// fosite's revocation of the whole token family.
+	ok, err := s.st.Redis.SetNX(ctx, "oauth:code:used:"+code, "1", s.cfg.codeTTL).Result()
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fosite.ErrInvalidatedAuthorizeCode
+	}
 	raw, err := s.st.Redis.Get(ctx, "oauth:code:"+code).Bytes()
 	if errors.Is(err, redis.Nil) {
 		return fosite.ErrNotFound
@@ -329,7 +337,11 @@ func (s *storage) GetRefreshTokenSession(ctx context.Context, signature string, 
 		   LEFT JOIN users u ON u.id = c.user_id
 		  WHERE c.jti=$1`, signature).Scan(&revoked, &family, &userActive, &userDeleted)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, fosite.ErrInactiveToken
+		// No lineage row means the token is unknown, not a detected reuse. fosite
+		// maps ErrNotFound to invalid_grant WITHOUT invoking its reuse handler —
+		// which is required here, because that handler dereferences the requester
+		// and ErrInactiveToken with a nil requester would panic the refresh flow.
+		return nil, fosite.ErrNotFound
 	}
 	if err != nil {
 		return nil, err
@@ -338,15 +350,29 @@ func (s *storage) GetRefreshTokenSession(ctx context.Context, signature string, 
 		// An already-rotated refresh token presented again is the canonical signal
 		// of token theft. Log it for the SOC before revoking the whole family.
 		logging.From(ctx).Warn("oauth: refresh token reuse detected; revoking token family", "family_id", family.String())
-		s.revokeFamily(ctx, family)
-		return nil, fosite.ErrInactiveToken
+		return s.reuseRequester(ctx, signature, session, family), fosite.ErrInactiveToken
 	}
 	if !userActive || userDeleted != nil {
-		s.revokeFamily(ctx, family)
-		return nil, fosite.ErrInactiveToken
+		return s.reuseRequester(ctx, signature, session, family), fosite.ErrInactiveToken
 	}
 	req, _, gerr := s.get(ctx, "oauth:rt:"+signature, session)
 	return req, gerr
+}
+
+// reuseRequester revokes the token family and returns a non-nil requester for
+// the ErrInactiveToken paths. fosite's reuse handler dereferences req.GetID()
+// (flow_refresh.go handleRefreshTokenReuse), so returning nil would panic the
+// refresh flow mid-revocation. Prefer the stored request — read BEFORE
+// revokeFamily deletes the Redis copy — and fall back to a minimal request
+// whose ID maps back to the same family, so fosite's follow-up revocation
+// calls hit the right chain (idempotently).
+func (s *storage) reuseRequester(ctx context.Context, signature string, session fosite.Session, family uuid.UUID) fosite.Requester {
+	req, _, err := s.get(ctx, "oauth:rt:"+signature, session)
+	s.revokeFamily(ctx, family)
+	if err == nil && req != nil {
+		return req
+	}
+	return &fosite.Request{ID: family.String(), Session: session}
 }
 
 func (s *storage) DeleteRefreshTokenSession(ctx context.Context, signature string) error {
