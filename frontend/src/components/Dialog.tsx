@@ -34,6 +34,14 @@ export function Dialog({
   const [render, setRender] = React.useState(open);
   const [show, setShow] = React.useState(false);
   const panelRef = React.useRef<HTMLDivElement>(null);
+  // Callers pass inline arrows for onClose, so its identity changes on every
+  // parent render (i.e. every keystroke in a controlled form). Effects below
+  // must NOT depend on it, or they re-run and steal focus mid-typing — read
+  // the latest value through a ref instead.
+  const onCloseRef = React.useRef(onClose);
+  React.useEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   React.useEffect(() => {
     if (open) {
@@ -46,34 +54,39 @@ export function Dialog({
     return () => clearTimeout(t);
   }, [open]);
 
+  // Runs exactly once per open: focus the first focusable control so keyboard
+  // users land in the dialog, and lock body scroll behind the overlay.
   React.useEffect(() => {
     if (!open) return;
-    // Focus the first focusable control inside the panel so keyboard users
-    // land in the dialog (and Escape works without clicking first).
     const t = setTimeout(() => {
       const el = panelRef.current?.querySelector<HTMLElement>(
         'input, select, textarea, button:not([aria-label="关闭"])'
       );
       (el ?? panelRef.current)?.focus();
     }, 50);
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !lockClose) onClose();
-    }
-    window.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       clearTimeout(t);
-      window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
-  }, [open, onClose, lockClose]);
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !lockClose) onCloseRef.current();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, lockClose]);
 
   if (!render) return null;
   return (
-    // Mobile: bottom sheet (full width, slides up, thumb-reachable buttons).
-    // ≥sm: centered modal. dvh keeps it visible above the soft keyboard / URL bar.
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
+    // Always a centered modal — anchoring to the bottom on narrow viewports
+    // pushed dialogs off-screen at higher browser zoom levels. dvh keeps it
+    // visible above the soft keyboard / URL bar.
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
         className={cn(
           "absolute inset-0 bg-[hsl(192_30%_6%/0.55)] transition-opacity duration-200",
@@ -88,9 +101,9 @@ export function Dialog({
         aria-label={title}
         tabIndex={-1}
         className={cn(
-          "bracket-frame relative z-10 max-h-[88vh] w-full max-w-lg overflow-y-auto border bg-card shadow-2xl shadow-black/25 outline-none transition-all duration-200 supports-[height:100dvh]:max-h-[calc(100dvh-2.5rem)] sm:supports-[height:100dvh]:max-h-[88dvh]",
-          "rounded-t-lg border-b-0 p-5 pb-6 sm:rounded-lg sm:border-b sm:p-6",
-          show ? "translate-y-0 scale-100 opacity-100" : "translate-y-6 opacity-0 sm:translate-y-3 sm:scale-[0.98]",
+          "bracket-frame relative z-10 max-h-[88vh] w-full max-w-lg overflow-y-auto border bg-card shadow-2xl shadow-black/25 outline-none transition-all duration-200 supports-[height:100dvh]:max-h-[calc(100dvh-2rem)] sm:supports-[height:100dvh]:max-h-[88dvh]",
+          "rounded-lg p-5 sm:p-6",
+          show ? "translate-y-0 scale-100 opacity-100" : "translate-y-3 scale-[0.98] opacity-0",
           className
         )}
       >
