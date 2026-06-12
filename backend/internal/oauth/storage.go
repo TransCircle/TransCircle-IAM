@@ -173,18 +173,25 @@ func (s *storage) GetClient(ctx context.Context, id string) (fosite.Client, erro
 		logging.From(ctx).Warn("oauth: client is inactive; rejecting request", "client_id", id)
 		return nil, fosite.ErrInvalidClient.WithHint("The OAuth 2.0 Client is disabled.")
 	}
-	return s.toFositeClient(ctx, c), nil
+	return s.toFositeClient(ctx, c)
 }
 
-func (s *storage) toFositeClient(ctx context.Context, c *Client) fosite.Client {
+func (s *storage) toFositeClient(ctx context.Context, c *Client) (fosite.Client, error) {
 	var secret []byte
 	var rotated [][]byte
 	if c.HasSecret {
-		if cur, prev, err := s.clients.secretHashes(ctx, c.ClientID); err == nil {
-			secret = []byte(cur)
-			for _, h := range prev {
-				rotated = append(rotated, []byte(h))
-			}
+		cur, prev, err := s.clients.secretHashes(ctx, c.ClientID)
+		if err != nil {
+			// A confidential client whose stored hashes cannot be read would
+			// otherwise be handed to fosite with an empty hash and authenticate as
+			// "client secret incorrect" — a misleading failure for a correct secret.
+			// Fail loudly as a server error instead.
+			logging.From(ctx).Error("oauth: failed to load client secret hashes", "client_id", c.ClientID, "err", err)
+			return nil, fosite.ErrServerError.WithWrap(err).WithDebug(err.Error())
+		}
+		secret = []byte(cur)
+		for _, h := range prev {
+			rotated = append(rotated, []byte(h))
 		}
 	}
 	return &fosite.DefaultClient{
@@ -197,7 +204,7 @@ func (s *storage) toFositeClient(ctx context.Context, c *Client) fosite.Client {
 		Scopes:         c.AllowedScopes,
 		Audience:       c.Audience,
 		Public:         c.Public,
-	}
+	}, nil
 }
 
 func (s *storage) ClientAssertionJWTValid(ctx context.Context, jti string) error {
