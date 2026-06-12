@@ -60,7 +60,10 @@ type meResp struct {
 	Permissions    []string `json:"permissions"`
 	Roles          []string `json:"roles"`          // system-app role keys held by the caller
 	IsSuperAdmin   bool     `json:"is_super_admin"` // convenience flag for UI gating
-	Impersonator   *meActor `json:"impersonator"`
+	// True when the email-lock policy is on and the caller is not a
+	// super-admin: this caller may not change any email (own or others').
+	EmailChangeDisabled bool     `json:"email_change_disabled"`
+	Impersonator        *meActor `json:"impersonator"`
 }
 
 type meUser struct {
@@ -103,13 +106,19 @@ func (h *Handlers) handleMe(w http.ResponseWriter, r *http.Request) error {
 	if roles == nil {
 		roles = []string{}
 	}
+	emailLocked, err := h.Repo.EmailChangeRestricted(ctx, h.Store.Pool)
+	if err != nil {
+		return err
+	}
+	isSuper := slices.Contains(roles, rbac.SuperAdminKey)
 	resp := meResp{
-		User:           meUser{ID: user.ID, Username: user.Username, DisplayName: user.DisplayName, Email: user.Email, Status: user.Status, AvatarURL: user.AvatarURL},
-		RequiredAction: action,
-		MFA:            mfa,
-		Permissions:    perms,
-		Roles:          roles,
-		IsSuperAdmin:   slices.Contains(roles, rbac.SuperAdminKey),
+		User:                meUser{ID: user.ID, Username: user.Username, DisplayName: user.DisplayName, Email: user.Email, Status: user.Status, AvatarURL: user.AvatarURL},
+		RequiredAction:      action,
+		MFA:                 mfa,
+		Permissions:         perms,
+		Roles:               roles,
+		IsSuperAdmin:        isSuper,
+		EmailChangeDisabled: emailLocked && !isSuper,
 	}
 	if p.ImpersonatorID != uuid.Nil {
 		resp.Impersonator = &meActor{ID: p.ImpersonatorID, Username: p.ImpersonatorLabel}
@@ -136,6 +145,32 @@ func (h *Handlers) handleUpdateProfile(w http.ResponseWriter, r *http.Request) e
 	p, _ := authctx.From(r.Context())
 	ctx := r.Context()
 	err := h.Store.WithTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		// Email-lock policy: when enabled, only a super-admin may change an
+		// email — everyone else may still edit their display name (email must
+		// stay as-is). Checked inside the writing tx under the shared policy
+		// lock so a concurrent policy flip cannot race an email change through.
+		if err := h.Repo.LockPolicyShared(ctx, tx); err != nil {
+			return err
+		}
+		locked, err := h.Repo.EmailChangeRestricted(ctx, tx)
+		if err != nil {
+			return err
+		}
+		if locked {
+			u, err := h.Repo.GetUser(ctx, tx, p.UserID)
+			if err != nil {
+				return err
+			}
+			if req.Email != u.Email {
+				roles, err := h.Repo.EffectiveRoles(ctx, tx, p.UserID, rbac.SystemAppID)
+				if err != nil {
+					return err
+				}
+				if !slices.Contains(roles, rbac.SuperAdminKey) {
+					return httpx.ErrForbidden.WithDetail("邮箱修改已被管理员锁定，如需变更请联系超级管理员")
+				}
+			}
+		}
 		if err := h.Repo.UpdateSelfProfile(ctx, tx, p.UserID, req.Email, req.DisplayName); err != nil {
 			return err
 		}

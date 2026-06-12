@@ -96,6 +96,8 @@ export function UserDetailPage() {
   const canEditBasic = canWrite && !isSelf && !targetIsSuper;
   const canManageMembership = canWrite;
   const canManageAppAssign = canWrite;
+  // Email-lock policy: this actor may not change anyone's email.
+  const emailLocked = !!me?.email_change_disabled;
 
   const groupToggle = useAssignmentToggle(qc, id, toast, "groups", `/api/v1/admin/users/${id}/groups`);
   const roleToggle = useAssignmentToggle(qc, id, toast, "roles", `/api/v1/admin/users/${id}/roles`);
@@ -258,8 +260,8 @@ export function UserDetailPage() {
               <Field label="显示名">
                 <Input value={basic.display_name} onChange={(e) => setBasic({ ...basic, display_name: e.target.value })} />
               </Field>
-              <Field label="邮箱">
-                <Input value={basic.email} type="email" onChange={(e) => setBasic({ ...basic, email: e.target.value })} />
+              <Field label="邮箱" help={emailLocked ? "邮箱修改已被锁定，仅超级管理员可修改用户邮箱。" : undefined}>
+                <Input value={basic.email} type="email" disabled={emailLocked} onChange={(e) => setBasic({ ...basic, email: e.target.value })} />
               </Field>
               <div className="flex items-center justify-between gap-3 rounded-lg border p-3 text-sm">
                 <span>首次登录强制改密</span>

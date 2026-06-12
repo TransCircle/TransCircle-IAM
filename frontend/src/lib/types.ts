@@ -20,6 +20,8 @@ export interface Me {
   permissions: string[];
   roles: string[];
   is_super_admin: boolean;
+  /** Email-lock policy is on and the caller is not a super admin: they may not change any email. */
+  email_change_disabled: boolean;
   impersonator: { id: string; username: string } | null;
 }
 

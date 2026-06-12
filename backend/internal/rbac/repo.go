@@ -154,6 +154,42 @@ WHERE u.is_active AND u.deleted_at IS NULL`
 	return n, err
 }
 
+// policyLockKey serializes security.policy writes against in-flight email
+// changes (distinct from the migration/bootstrap/super-admin advisory keys).
+const policyLockKey int64 = 6_421_775_004_991_004
+
+// LockPolicyExclusive takes the policy advisory lock for a policy WRITE: the
+// super-admin gate must compare against committed state, or a stale
+// full-object upsert could silently erase a freshly enabled flag.
+func (Repo) LockPolicyExclusive(ctx context.Context, db store.DBTX) error {
+	_, err := db.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, policyLockKey)
+	return err
+}
+
+// LockPolicyShared is taken by transactions that READ the policy to authorize
+// a write elsewhere (email changes): it lets those run concurrently with each
+// other while excluding a simultaneous policy flip.
+func (Repo) LockPolicyShared(ctx context.Context, db store.DBTX) error {
+	_, err := db.Exec(ctx, `SELECT pg_advisory_xact_lock_shared($1)`, policyLockKey)
+	return err
+}
+
+// EmailChangeRestricted reports whether the security policy locks email
+// changes to super-admins only ("disable_self_email_change" in the
+// security.policy system setting). Missing key/row means unrestricted. The
+// text comparison (instead of a ::boolean cast) keeps a malformed value from
+// turning every profile update into a 500.
+func (Repo) EmailChangeRestricted(ctx context.Context, db store.DBTX) (bool, error) {
+	var v bool
+	err := db.QueryRow(ctx,
+		`SELECT coalesce(value->>'disable_self_email_change', '') = 'true' FROM system_settings WHERE key='security.policy'`).
+		Scan(&v)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return v, err
+}
+
 // BumpEpoch increments the global authz epoch, invalidating every user's cached
 // effective permissions at once. Use for broad changes whose affected-user set is
 // expensive to enumerate (permission deletion, application disable/delete).

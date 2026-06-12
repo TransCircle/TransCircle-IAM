@@ -194,8 +194,41 @@ func (h *Handlers) updatePolicy(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	ctx := r.Context()
+	// The email-change lock is a super-admin-only policy: a plain admin holding
+	// iam.settings.write must not flip it in either direction (omitting the key
+	// counts as turning it off, so that is gated too). Non-boolean values are
+	// rejected outright — the SQL reader compares value->>'...' = 'true', so a
+	// string "true" would otherwise enable the lock while dodging this gate.
+	var next bool
+	if v, ok := policy["disable_self_email_change"]; ok {
+		b, isBool := v.(bool)
+		if !isBool {
+			return httpx.ErrBadRequest.WithDetail("disable_self_email_change 必须是布尔值")
+		}
+		next = b
+	}
+	actor := actorID(r)
 	err := h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		_, err := tx.Exec(ctx,
+		// The gate must compare against COMMITTED state inside the writing tx:
+		// without the exclusive lock, a plain admin's stale full-object upsert
+		// racing a super-admin's flip would silently erase the fresh value.
+		if err := h.Repo.LockPolicyExclusive(ctx, tx); err != nil {
+			return err
+		}
+		cur, err := h.Repo.EmailChangeRestricted(ctx, tx)
+		if err != nil {
+			return err
+		}
+		if next != cur {
+			super, err := h.isSuperAdmin(ctx, actor)
+			if err != nil {
+				return err
+			}
+			if !super {
+				return httpx.ErrForbidden.WithDetail("仅超级管理员可更改邮箱锁定策略")
+			}
+		}
+		_, err = tx.Exec(ctx,
 			`INSERT INTO system_settings (key, value) VALUES ('security.policy', $1::jsonb)
 			 ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value`, mustJSON(policy))
 		if err != nil {

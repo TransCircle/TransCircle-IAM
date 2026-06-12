@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, errorMessage } from "@/lib/api";
-import { Button, Card, CardContent, CardHeader, CardTitle, Field, Input, PageHeader, Select, Skeleton, Textarea } from "@/components/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, Field, Input, PageHeader, Select, Skeleton, Switch, Textarea } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/auth/AuthProvider";
 
@@ -14,7 +14,7 @@ interface WebAuthnRP {
 }
 
 export function SettingsPage() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, isSuperAdmin } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
   const canWrite = hasPermission("iam.settings.write");
@@ -33,6 +33,23 @@ export function SettingsPage() {
     onSuccess: () => {
       toast("已保存 WebAuthn 配置", "success");
       qc.invalidateQueries({ queryKey: ["webauthn-rp"] });
+    },
+    onError: (e) => toast(errorMessage(e), "error"),
+  });
+
+  const policy = useQuery<Record<string, unknown>>({
+    queryKey: ["security-policy"],
+    queryFn: async () => (await api.get("/api/v1/admin/settings/policy")).data ?? {},
+  });
+  const emailLock = !!policy.data?.disable_self_email_change;
+  const savePolicy = useMutation({
+    // Merge into the stored policy object so future policy keys survive the toggle.
+    mutationFn: (next: boolean) =>
+      api.put("/api/v1/admin/settings/policy", { ...(policy.data ?? {}), disable_self_email_change: next }),
+    onSuccess: () => {
+      toast("账户策略已更新", "success");
+      qc.invalidateQueries({ queryKey: ["security-policy"] });
+      qc.invalidateQueries({ queryKey: ["me"] });
     },
     onError: (e) => toast(errorMessage(e), "error"),
   });
@@ -123,6 +140,28 @@ export function SettingsPage() {
             <Button type="submit" loading={save.isPending}>保存</Button>
           )}
           </form>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6 max-w-2xl">
+        <CardHeader>
+          <CardTitle>账户策略</CardTitle>
+          <p className="text-sm text-muted-foreground">控制全体用户的自助账户行为，仅超级管理员可更改。</p>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between gap-3 rounded-lg border p-3 text-sm">
+            <div>
+              <div className="font-medium">禁止用户自行修改邮箱</div>
+              <p className="mt-0.5 text-xs text-muted-foreground">开启后，邮箱仅能由超级管理员在用户管理中修改，其他人（含管理员）一律只读。</p>
+            </div>
+            <Switch
+              checked={emailLock}
+              disabled={!isSuperAdmin || policy.isLoading || policy.isError || savePolicy.isPending}
+              onCheckedChange={(v) => savePolicy.mutate(v)}
+            />
+          </div>
+          {policy.isError && <p className="mt-2 text-xs text-muted-foreground">策略加载失败：{errorMessage(policy.error)}</p>}
+          {!isSuperAdmin && !policy.isError && <p className="mt-2 text-xs text-muted-foreground">仅超级管理员可更改此策略。</p>}
         </CardContent>
       </Card>
     </div>

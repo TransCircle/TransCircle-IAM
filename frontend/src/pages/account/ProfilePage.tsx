@@ -59,10 +59,18 @@ export function ProfilePage() {
   }
 
   if (!me) return null;
+  const emailLocked = !!me.email_change_disabled;
 
   return (
     <div>
-      <PageHeader title="个人资料" description="查看与编辑你的账户信息。登录名不可修改，邮箱与显示名可自行编辑。" />
+      <PageHeader
+        title="个人资料"
+        description={
+          emailLocked
+            ? "查看与编辑你的账户信息。登录名不可修改；邮箱已由管理员锁定。"
+            : "查看与编辑你的账户信息。登录名不可修改，邮箱与显示名可自行编辑。"
+        }
+      />
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
@@ -85,8 +93,11 @@ export function ProfilePage() {
             <Field label="显示名">
               <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="你的显示名" />
             </Field>
-            <Field label="邮箱" help="邮箱仅作展示用途，无需验证，可自行填写。">
-              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+            <Field
+              label="邮箱"
+              help={emailLocked ? "邮箱修改已被管理员锁定，如需变更请联系超级管理员。" : "邮箱仅作展示用途，无需验证，可自行填写。"}
+            >
+              <Input type="email" value={email} disabled={emailLocked} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
             </Field>
             <Button onClick={() => save.mutate()} loading={save.isPending}>
               保存修改

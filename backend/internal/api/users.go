@@ -147,6 +147,32 @@ func (h *Handlers) updateUser(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	err = h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		// Email-lock policy: when enabled, only a super-admin may change any
+		// user's email (the rest of the profile stays editable as usual).
+		// Checked inside the writing tx under the shared policy lock so a
+		// concurrent policy flip cannot race an email change through.
+		if err := h.Repo.LockPolicyShared(ctx, tx); err != nil {
+			return err
+		}
+		locked, err := h.Repo.EmailChangeRestricted(ctx, tx)
+		if err != nil {
+			return err
+		}
+		if locked {
+			cur, err := h.Repo.GetUser(ctx, tx, id)
+			if err != nil {
+				return httpx.ErrNotFound
+			}
+			if req.Email != cur.Email {
+				super, err := h.isSuperAdmin(ctx, actorID(r))
+				if err != nil {
+					return err
+				}
+				if !super {
+					return httpx.ErrForbidden.WithDetail("邮箱修改已被锁定，仅超级管理员可修改用户邮箱")
+				}
+			}
+		}
 		if err := h.Repo.UpdateUserProfile(ctx, tx, id, req.Email, req.DisplayName, req.Status); err != nil {
 			return err
 		}
