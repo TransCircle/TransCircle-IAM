@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/transcircle/iam/internal/authn"
@@ -18,6 +17,7 @@ import (
 	"github.com/transcircle/iam/internal/db"
 	"github.com/transcircle/iam/internal/keys"
 	"github.com/transcircle/iam/internal/rbac"
+	"github.com/transcircle/iam/internal/superadmin"
 )
 
 // bootstrapOutput is written (0600) so the operator can retrieve the first-admin
@@ -88,49 +88,63 @@ func ensureInitialized(ctx context.Context, rt *runtime) (*bootstrapOutput, erro
 			return err
 		}
 		if n > 0 {
-			// System already has users: unconditionally re-grant the super_admin
-			// AND admin direct roles to the bootstrap admin on every boot, so an
-			// accidental role removal or permission wipe always self-heals on a
-			// restart. (To permanently stop this, DELETE the bootstrap admin
-			// account — a disabled-but-present account still gets re-granted.)
-			if err := ensureBootstrapAdminRoles(ctx, tx, repo, rt.cfg.BootstrapAdminUsername); err != nil {
+			// Existing system: self-heal the bootstrap admin's ADMIN direct role on
+			// every boot. The super_admin role is owned separately by the allowlist
+			// reconcile below (its source of truth is super_admin_grants, not a
+			// re-grant here).
+			if err := ensureBootstrapAdminRole(ctx, tx, repo, rt.cfg.BootstrapAdminUsername); err != nil {
 				return err
 			}
-			return nil
+		} else {
+			admin := &rbac.User{
+				ID:                  crypto.NewUUIDv7(),
+				Username:            rt.cfg.BootstrapAdminUsername,
+				Email:               rt.cfg.BootstrapAdminEmail,
+				DisplayName:         "系统管理员",
+				Status:              "active",
+				IsActive:            true,
+				ForcePasswordChange: true,
+				MustEnrollMFA:       true,
+			}
+			if err := repo.CreateUser(ctx, tx, admin); err != nil {
+				return err
+			}
+			tempPassword := crypto.RandomToken(12)
+			if err := passwords.SetInitial(ctx, tx, admin.ID, tempPassword); err != nil {
+				return err
+			}
+			if err := repo.AddUserRole(ctx, tx, admin.ID, rbac.SuperAdminRole, admin.ID); err != nil {
+				return err
+			}
+			if err := repo.AddUserRole(ctx, tx, admin.ID, rbac.AdminRole, admin.ID); err != nil {
+				return err
+			}
+			codes, err := recovery.Generate(ctx, tx, admin.ID, 10)
+			if err != nil {
+				return err
+			}
+			out = &bootstrapOutput{
+				Username:      admin.Username,
+				TempPassword:  tempPassword,
+				RecoveryCodes: codes,
+				Note:          "首次登录将强制修改密码并绑定 Passkey/TOTP。请妥善保存恢复码后删除本文件。",
+			}
 		}
 
-		admin := &rbac.User{
-			ID:                  crypto.NewUUIDv7(),
-			Username:            rt.cfg.BootstrapAdminUsername,
-			Email:               rt.cfg.BootstrapAdminEmail,
-			DisplayName:         "系统管理员",
-			Status:              "active",
-			IsActive:            true,
-			ForcePasswordChange: true,
-			MustEnrollMFA:       true,
-		}
-		if err := repo.CreateUser(ctx, tx, admin); err != nil {
-			return err
-		}
-		tempPassword := crypto.RandomToken(12)
-		if err := passwords.SetInitial(ctx, tx, admin.ID, tempPassword); err != nil {
-			return err
-		}
-		if err := repo.AddUserRole(ctx, tx, admin.ID, rbac.SuperAdminRole, admin.ID); err != nil {
-			return err
-		}
-		if err := repo.AddUserRole(ctx, tx, admin.ID, rbac.AdminRole, admin.ID); err != nil {
-			return err
-		}
-		codes, err := recovery.Generate(ctx, tx, admin.ID, 10)
+		// Force-align the live super_admin grants to the signed allowlist on every
+		// boot: strip any super_admin (direct OR via a group) that is not authorized
+		// and grant it to everyone who is. This is the enforcement point that makes a
+		// direct DB edit of user_roles non-durable — it is undone on the next restart.
+		res, err := superadmin.Reconcile(ctx, tx, dek, dekVer, rt.cfg.BootstrapAdminUsername)
 		if err != nil {
 			return err
 		}
-		out = &bootstrapOutput{
-			Username:      admin.Username,
-			TempPassword:  tempPassword,
-			RecoveryCodes: codes,
-			Note:          "首次登录将强制修改密码并绑定 Passkey/TOTP。请妥善保存恢复码后删除本文件。",
+		if res.Changed() {
+			fmt.Printf("bootstrap: 超级管理员名单对齐：授权 %d，授予 %d，剥离 %d，清理 group 授予 %d。\n",
+				res.Authorized, res.Granted, res.Revoked, res.GroupsCleared)
+		}
+		for _, name := range res.IgnoredRows {
+			fmt.Printf("bootstrap: 警告：名单行 %q 签名无效，已忽略（不会获得 super_admin）。\n", name)
 		}
 		return nil
 	})
@@ -160,11 +174,13 @@ func Bootstrap(ctx context.Context) error {
 	return writeBootstrapOutput(rt.cfg.BootstrapOutFile, out, true)
 }
 
-// ensureBootstrapAdminRoles re-grants the super_admin AND admin direct roles to
-// the configured bootstrap admin on every boot (idempotent), so an accidental
-// role removal or permission wipe always self-heals on restart. If the bootstrap
-// admin account has been deleted, there is nothing to recover to.
-func ensureBootstrapAdminRoles(ctx context.Context, tx pgx.Tx, repo rbac.Repo, adminUsername string) error {
+// ensureBootstrapAdminRole re-grants the built-in ADMIN direct role to the
+// configured bootstrap admin on every boot (idempotent), so an accidental
+// admin-role removal self-heals on restart. The super_admin role is NOT handled
+// here — it is owned by superadmin.Reconcile, which force-aligns it to the signed
+// allowlist. If the bootstrap admin account has been deleted, there is nothing to
+// recover to.
+func ensureBootstrapAdminRole(ctx context.Context, tx pgx.Tx, repo rbac.Repo, adminUsername string) error {
 	admin, err := repo.GetUserByUsername(ctx, tx, adminUsername)
 	if errors.Is(err, rbac.ErrNotFound) {
 		return nil // no bootstrap admin to recover to
@@ -172,15 +188,13 @@ func ensureBootstrapAdminRoles(ctx context.Context, tx pgx.Tx, repo rbac.Repo, a
 	if err != nil {
 		return err
 	}
-	for _, role := range []uuid.UUID{rbac.SuperAdminRole, rbac.AdminRole} {
-		if err := repo.AddUserRole(ctx, tx, admin.ID, role, admin.ID); err != nil {
-			return err
-		}
+	if err := repo.AddUserRole(ctx, tx, admin.ID, rbac.AdminRole, admin.ID); err != nil {
+		return err
 	}
 	if err := repo.BumpPermVersion(ctx, tx, admin.ID); err != nil {
 		return err
 	}
-	fmt.Printf("bootstrap: 已确保 %s 持有 super_admin 与 admin 直接角色。\n", admin.Username)
+	fmt.Printf("bootstrap: 已确保 %s 持有 admin 直接角色（super_admin 由名单对齐保证）。\n", admin.Username)
 	return nil
 }
 
@@ -238,10 +252,13 @@ func Admin(ctx context.Context, args []string) error {
 		}
 		return adminResetMFA(ctx, args[1])
 	case "grant-super-admin":
+		// Back-compat alias for `iam super-admin add`: route through the allowlist
+		// so the grant persists across reboots (a bare user_roles grant would be
+		// stripped by the boot reconcile).
 		if len(args) < 2 {
 			return fmt.Errorf("usage: iam admin grant-super-admin <username>")
 		}
-		return adminGrantSuperAdmin(ctx, args[1])
+		return superAdminAdd(ctx, args[1], "via admin grant-super-admin")
 	case "reset-password":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: iam admin reset-password <username> [new-password]")
@@ -302,35 +319,6 @@ func adminResetPassword(ctx context.Context, username, explicit string) error {
 		} else {
 			fmt.Printf("admin: 已为 %s 设置新密码。\n", username)
 		}
-		return nil
-	})
-}
-
-// adminGrantSuperAdmin re-grants the super_admin role to a user and re-syncs the
-// role's permissions — the break-glass recovery for a self-inflicted lockout.
-func adminGrantSuperAdmin(ctx context.Context, username string) error {
-	rt, err := setup(ctx)
-	if err != nil {
-		return err
-	}
-	defer rt.st.Close()
-	repo := rbac.Repo{}
-
-	return rt.st.WithTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		u, err := repo.GetUserByUsername(ctx, tx, username)
-		if err != nil {
-			return err
-		}
-		if err := repo.EnsureRoleHasAllSystemPerms(ctx, tx, rbac.SuperAdminRole); err != nil {
-			return err
-		}
-		if err := repo.AddUserRole(ctx, tx, u.ID, rbac.SuperAdminRole, u.ID); err != nil {
-			return err
-		}
-		if err := repo.BumpPermVersion(ctx, tx, u.ID); err != nil {
-			return err
-		}
-		fmt.Printf("admin: 已将 super_admin 授予用户 %s 并重置该角色权限。\n", username)
 		return nil
 	})
 }

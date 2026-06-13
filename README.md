@@ -62,6 +62,12 @@ server {
 >   否则 DEK 以明文存于数据库，备份泄露即等同泄露全部静态密钥。
 > - 唯一 MFA 因子丢失且无其他管理员时的破玻璃命令：
 >   `docker compose run --rm app admin reset-mfa <用户名>`。
+> - **超级管理员（super_admin）只能经服务器端 CLI 管理**，Web/API 永远无法授予。每次启动都会把 `user_roles`
+>   里的 super_admin 强制对齐到一份「签名名单」，名单外的（含经身份组下发的）一律剥离——**直接改数据库加超管，重启即失效**：
+>   `docker compose run --rm app super-admin add <用户名>` / `remove <用户名>` / `list`。
+>   系统初始管理员（`IAM_BOOTSTRAP_ADMIN_USERNAME`）恒为不可删除的根超管。
+>   名单每行用 DEK 派生子密钥做 HMAC 防伪；**仅在开启 `IAM_KEK_ENABLED` 时**（DEK 在库中为密文）该防伪对「能读库的攻击者」也成立，
+>   KEK 关闭时 DEK 明文存库，签名只能阻挡随手直改、挡不住会读库并懂签名构造的人——故生产务必开启 KEK。
 
 登录后：① 强制改密 → ② 绑定 Passkey/TOTP 并保存恢复码 → ③ 进入管理台。
 
@@ -100,6 +106,7 @@ cd frontend && npm install && npm run dev
 
 - 静态加密：业务秘密 AES-256-GCM（DEK 信封加密，AAD 域分离）；可选 `IAM_KEK_ENABLED` 用 KEK 包裹 DEK。
 - 缓存一致性：有效权限以 Postgres `perm_version` 为权威，撤权即时生效（非等 TTL）。
+- 超级管理员保护：super_admin 的权威来源是签名名单 `super_admin_grants`，每次启动强制对齐 `user_roles`（名单外的直接/身份组授予一律剥离），仅服务器 CLI 可增删，初始管理员不可删——详见部署注记。
 - 令牌：access JWT ≤15m；refresh 轮换 + 整族重用检测；JWKS 发布 active+previous 支持密钥轮换。
 - 原子性：所有变更走单事务，审计写入同一事务（fail-closed）；顶层 recover 防 panic，错误统一 RFC7807。
 - CSRF：`__Host-` 会话 Cookie + 双提交令牌；OAuth `token/introspect/revoke` 豁免，Consent 提交不豁免。

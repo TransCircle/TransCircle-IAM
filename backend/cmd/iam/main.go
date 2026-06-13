@@ -5,6 +5,7 @@
 //	iam bootstrap    initialize keys + system data + first admin and exit
 //	iam healthcheck  probe local readiness (for container HEALTHCHECK)
 //	iam admin ...    offline break-glass operations (e.g. reset-mfa)
+//	iam super-admin  manage the super-admin allowlist (add/remove/list)
 package main
 
 import (
@@ -48,6 +49,8 @@ func main() {
 		err = app.Healthcheck(ctx)
 	case "admin":
 		err = app.Admin(ctx, os.Args[2:])
+	case "super-admin":
+		err = app.SuperAdmin(ctx, os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 		return
@@ -75,6 +78,11 @@ commands:
   admin <op>   offline break-glass operations:
                  reset-password <user> [pw]   reset a user's password
                  reset-mfa <user>             clear a user's MFA factors
-                 grant-super-admin <user>     grant the super_admin role
+                 grant-super-admin <user>     alias for super-admin add
+  super-admin <op>  manage the super-admin allowlist (the only durable way to
+                    add/remove a super admin; web/API cannot grant super_admin):
+                 add <user> [note]            add (or re-affirm) a super admin
+                 remove <user>                remove a super admin (not the root)
+                 list                         list the allowlist
 `)
 }
