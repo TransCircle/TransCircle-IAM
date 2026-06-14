@@ -1,7 +1,35 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { X, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui";
+
+// A module-level stack of every currently-open dialog, shared across all
+// instances. Stacked modals are real here — e.g. a step-up challenge (StepUp.tsx)
+// opens over an edit form. The stack lets us (1) keep the body scroll-locked
+// until the LAST dialog closes (a per-instance save/restore would unlock the
+// body as soon as the first of two dialogs closed), and (2) route Escape only
+// to the top-most dialog instead of closing every open one at once.
+const dialogStack: symbol[] = [];
+let savedBodyOverflow = "";
+
+function pushDialog(id: symbol) {
+  if (dialogStack.length === 0) {
+    savedBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+  }
+  dialogStack.push(id);
+}
+
+function popDialog(id: symbol) {
+  const i = dialogStack.lastIndexOf(id);
+  if (i !== -1) dialogStack.splice(i, 1);
+  if (dialogStack.length === 0) document.body.style.overflow = savedBodyOverflow;
+}
+
+function isTopDialog(id: symbol) {
+  return dialogStack[dialogStack.length - 1] === id;
+}
 
 export function Dialog({
   open,
@@ -34,6 +62,9 @@ export function Dialog({
   const [render, setRender] = React.useState(open);
   const [show, setShow] = React.useState(false);
   const panelRef = React.useRef<HTMLDivElement>(null);
+  // Stable per-instance token used to identify this dialog in the shared stack.
+  const idRef = React.useRef<symbol>(undefined as unknown as symbol);
+  if (idRef.current === undefined) idRef.current = Symbol("dialog");
   // Callers pass inline arrows for onClose, so its identity changes on every
   // parent render (i.e. every keystroke in a controlled form). Effects below
   // must NOT depend on it, or they re-run and steal focus mid-typing — read
@@ -50,39 +81,50 @@ export function Dialog({
       return () => cancelAnimationFrame(id);
     }
     setShow(false);
-    const t = setTimeout(() => setRender(false), 180);
+    // Matches the panel's `duration-200` exit transition so it isn't cut short.
+    const t = setTimeout(() => setRender(false), 200);
     return () => clearTimeout(t);
   }, [open]);
 
   // Runs exactly once per open: focus the first focusable control so keyboard
-  // users land in the dialog, and lock body scroll behind the overlay.
+  // users land in the dialog, and join the shared stack (which locks body
+  // scroll while any dialog is open).
   React.useEffect(() => {
     if (!open) return;
+    const id = idRef.current;
     const t = setTimeout(() => {
+      // Skip disabled controls so focus lands in the first *editable* field
+      // (e.g. edit dialogs lead with a disabled, read-only `key` input).
       const el = panelRef.current?.querySelector<HTMLElement>(
-        'input, select, textarea, button:not([aria-label="关闭"])'
+        'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]):not([aria-label="关闭"])'
       );
       (el ?? panelRef.current)?.focus();
     }, 50);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    pushDialog(id);
     return () => {
       clearTimeout(t);
-      document.body.style.overflow = prev;
+      popDialog(id);
     };
   }, [open]);
 
   React.useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !lockClose) onCloseRef.current();
+      // Only the top-most dialog reacts, so Escape closes one layer at a time
+      // instead of dismissing every stacked dialog at once.
+      if (e.key === "Escape" && !lockClose && isTopDialog(idRef.current)) onCloseRef.current();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, lockClose]);
 
   if (!render) return null;
-  return (
+  // Portal to <body> so the dialog escapes any ancestor that establishes a
+  // containing block for fixed-position descendants (e.g. the page-load
+  // `.stagger` reveal animation touches `transform`). Without this, `fixed`
+  // resolves relative to that ancestor and the modal + overlay render down the
+  // page instead of over the viewport. Matches the dropdown/tooltip in ui.tsx.
+  return createPortal(
     // Always a centered modal — anchoring to the bottom on narrow viewports
     // pushed dialogs off-screen at higher browser zoom levels. dvh keeps it
     // visible above the soft keyboard / URL bar.
@@ -143,7 +185,8 @@ export function Dialog({
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
