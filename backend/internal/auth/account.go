@@ -37,6 +37,13 @@ func (h *Handlers) MountAccount(r chi.Router) {
 	r.Group(func(r chi.Router) {
 		r.Use(h.RequireAuth)
 		r.Use(h.Gate)
+		// Standalone two-factor verification for relying applications: the hosted
+		// /verify/{id} page completes a request made through the machine API. Gated
+		// so only a fully-onboarded user can satisfy an app's verification.
+		r.Method("GET", "/api/v1/verify/{id}", httpx.Handler(h.handleVerifyInfo))
+		r.Method("POST", "/api/v1/verify/{id}/totp", httpx.Handler(h.handleVerifyTOTP))
+		r.Method("POST", "/api/v1/verify/{id}/webauthn/begin", httpx.Handler(h.handleVerifyWebAuthnBegin))
+		r.Method("POST", "/api/v1/verify/{id}/webauthn/finish", httpx.Handler(h.handleVerifyWebAuthnFinish))
 		r.Method("PATCH", "/api/v1/account/profile", httpx.Handler(h.handleUpdateProfile))
 		r.Method("POST", "/api/v1/account/avatar", httpx.Handler(h.handleUploadAvatar))
 		r.Method("GET", "/api/v1/account/sessions", httpx.Handler(h.handleMySessions))

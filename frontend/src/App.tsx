@@ -4,6 +4,7 @@ import { AppLayout } from "./components/AppLayout";
 import { LoginPage } from "./pages/LoginPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { ConsentPage } from "./pages/ConsentPage";
+import { VerifyPage } from "./pages/VerifyPage";
 import { ProfilePage } from "./pages/account/ProfilePage";
 import { SecurityPage } from "./pages/account/SecurityPage";
 import { MySessionsPage } from "./pages/account/MySessionsPage";
@@ -44,6 +45,16 @@ export default function App() {
           <RequireAuth>
             <RequireOnboarded>
               <ConsentPage />
+            </RequireOnboarded>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/verify/:id"
+        element={
+          <RequireAuth>
+            <RequireOnboarded>
+              <VerifyPage />
             </RequireOnboarded>
           </RequireAuth>
         }

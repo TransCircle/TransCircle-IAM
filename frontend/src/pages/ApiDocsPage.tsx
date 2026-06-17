@@ -372,10 +372,85 @@ const allowed = permissions.includes("doc.write");`}</Code>
           </CardContent>
         </Card>
 
+        {/* 两步验证接口 */}
+        <Card>
+          <CardHeader>
+            <CardTitle>九、两步验证接口（独立 2FA）</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm">
+            <p className="text-muted-foreground">
+              当你的应用在某个敏感操作前需要确认「这确实是本人」时，可把两步验证<b className="text-foreground">外包给本系统</b>：
+              你的后端发起一次验证请求，拿到一个本系统的<b className="text-foreground">验证链接</b>，把用户引导过去完成
+              <b className="text-foreground">通行密钥或动态口令 (TOTP)</b> 验证；随后你的后端用 API 令牌<b className="text-foreground">回查权威结果</b>。
+              无需你自己实现/存储任何 2FA。
+            </p>
+            <div className="rounded-lg border bg-muted/30 p-3 text-xs leading-relaxed">
+              <p className="mb-1 font-medium text-foreground">前置条件</p>
+              <ul className="list-disc space-y-1 pl-5">
+                <li>在「管理 → API 令牌」创建令牌并勾选 <code>iam.mfa.verify</code> 作用域。</li>
+                <li>用户需已登录本系统（未登录会先跳转登录页）；若发起时指定了 <code>user</code>，则登录账号必须与之一致。</li>
+              </ul>
+            </div>
+
+            <p className="font-medium text-foreground">步骤 1 · 后端发起验证请求</p>
+            <EndpointDoc method="POST" path="/api/v1/mfa-verifications" auth="Bearer API 令牌 (tcp_)">
+              <p>创建一次性验证请求，返回引导用户前往的 <code>verify_url</code>。</p>
+            </EndpointDoc>
+            <Code>{`curl -X POST ${base}/api/v1/mfa-verifications \\
+  -H "Authorization: Bearer tcp_xxxxxx_xxxxxxxx" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "user": "zhangsan",                       // 可选：限定必须由该用户完成（用户名或 UUID）
+    "redirect_uri": "https://app/after-verify",// 可选：验证后浏览器回跳地址
+    "factors": ["passkey", "totp"],            // 可选：限定可用因素，留空=不限
+    "ttl_seconds": 600                          // 可选：有效期，默认 600，范围 [60, 1800]
+  }'
+
+# 返回
+{
+  "id": "<验证ID>",
+  "verify_url": "${base}/verify/<验证ID>",
+  "status": "pending",
+  "expires_at": "2026-06-17T10:10:00Z"
+}`}</Code>
+
+            <p className="font-medium text-foreground">步骤 2 · 把用户引导到 verify_url</p>
+            <p className="text-xs text-muted-foreground">
+              在浏览器中打开 <code>verify_url</code>。用户在本系统页面完成通行密钥或 TOTP 验证。
+              若发起时提供了 <code>redirect_uri</code>，成功后浏览器会带
+              <code>?verification_id=&lt;ID&gt;&amp;status=verified</code> 自动回跳；否则提示用户手动返回。
+              <b className="text-foreground">回跳参数仅作提示，不可作为信任凭据</b>——务必执行步骤 3 以服务端结果为准。
+            </p>
+
+            <p className="font-medium text-foreground">步骤 3 · 后端回查权威结果</p>
+            <EndpointDoc method="GET" path="/api/v1/mfa-verifications/{id}" auth="Bearer API 令牌 (tcp_)">
+              <p>查询验证状态。可在回跳后调用，或轮询直到 <code>status</code> 变为 <code>verified</code>。</p>
+            </EndpointDoc>
+            <Code>{`curl "${base}/api/v1/mfa-verifications/<验证ID>" \\
+  -H "Authorization: Bearer tcp_xxxxxx_xxxxxxxx"
+
+# 返回（已完成）
+{
+  "id": "<验证ID>",
+  "status": "verified",          // pending | verified
+  "user_id": "<用户UUID>",
+  "username": "zhangsan",
+  "factor": "passkey",           // passkey | totp
+  "verified_at": "2026-06-17T10:03:11Z",
+  "expires_at": "2026-06-17T10:10:00Z"
+}`}</Code>
+            <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+              <li>验证结果在有效期内可重复读取；过期后该 <code>id</code> 返回 <b>404</b>。</li>
+              <li>请校验返回的 <code>user_id</code>/<code>username</code> 是否为你期望验证的用户。</li>
+              <li>令牌缺少 <code>iam.mfa.verify</code> 作用域时返回 <b>403</b>。</li>
+            </ul>
+          </CardContent>
+        </Card>
+
         {/* 错误格式 */}
         <Card>
           <CardHeader>
-            <CardTitle>九、错误格式与状态码</CardTitle>
+            <CardTitle>十、错误格式与状态码</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <p className="text-muted-foreground">管理与机器 API 的错误统一返回 JSON，含机器可读的 <code>code</code> 与中文 <code>detail</code>：</p>
@@ -392,7 +467,7 @@ const allowed = permissions.includes("doc.write");`}</Code>
         {/* 完整示例 */}
         <Card>
           <CardHeader>
-            <CardTitle>十、完整示例（Node.js 伪代码）</CardTitle>
+            <CardTitle>十一、完整示例（Node.js 伪代码）</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             <Code>{`// 1) 用 code 换令牌

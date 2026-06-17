@@ -41,10 +41,14 @@ type Handlers struct {
 
 // Mount registers all REST routes.
 func (h *Handlers) Mount(r chi.Router) {
-	// External machine-to-machine permissions API (Bearer api_token).
+	// External machine-to-machine API (Bearer api_token).
 	r.Group(func(r chi.Router) {
 		r.Use(h.machineAuth)
 		r.Method("GET", "/api/v1/permissions", httpx.Handler(h.handlePermissionsAPI))
+		// Standalone two-factor verification: an app starts a request and later
+		// reads its authoritative result (scope iam.mfa.verify).
+		r.Method("POST", "/api/v1/mfa-verifications", httpx.Handler(h.createMFAVerification))
+		r.Method("GET", "/api/v1/mfa-verifications/{id}", httpx.Handler(h.getMFAVerification))
 	})
 
 	// Admin API: authenticated + onboarded + per-permission guarded.

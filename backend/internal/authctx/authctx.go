@@ -29,6 +29,7 @@ type Principal struct {
 
 	// Machine token fields (mutually exclusive with a user session).
 	IsMachine   bool
+	TokenID     uuid.UUID
 	TokenName   string
 	TokenScopes []string
 	AllowedApps []string

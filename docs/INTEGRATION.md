@@ -4,12 +4,13 @@
 
 ---
 
-## 0. 两种接入方式
+## 0. 三种接入方式
 
 | 方式 | 面向 | 用途 |
 |---|---|---|
 | ① OIDC 单点登录 | 用户登录 | 用户经本系统登录你的应用；登录后拿到用户身份与「在你这个应用下」的角色/权限/身份组。 |
 | ② 机器权限 API | 后端鉴权 | 你的后端用 API 令牌随时查询「某用户在某应用下」的角色/权限/身份组。 |
+| ③ 独立两步验证接口 | 敏感操作前校验本人 | 你的后端发起验证请求拿到验证链接，引导用户到本系统完成 通行密钥 / TOTP，再回查权威结果（见 §3）。需令牌带 `iam.mfa.verify` 作用域。 |
 
 **术语与维度**
 
@@ -256,6 +257,47 @@ curl "https://iam.example.com/api/v1/permissions?user=zhangsan&app=wiki" \
 
 ---
 
+## 6b. 独立两步验证接口（外包 2FA）
+
+当你的应用在某个敏感操作前需要确认「确实是本人」时，可把两步验证外包给本系统：后端发起验证请求，拿到一个本系统的验证链接，把用户引导过去完成 **通行密钥 / 动态口令 (TOTP)**，随后后端用 API 令牌**回查权威结果**。无需自己实现/存储 2FA。
+
+**前置**：API 令牌需勾选 `iam.mfa.verify` 作用域；用户需已登录本系统（未登录会先跳登录页）；若发起时指定 `user`，登录账号必须与之一致。
+
+**步骤 1 · 发起验证请求**
+
+```bash
+curl -X POST https://iam.example.com/api/v1/mfa-verifications \
+  -H "Authorization: Bearer tcp_xxxxxx_xxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user": "zhangsan",                        # 可选：限定必须由该用户完成
+    "redirect_uri": "https://app/after-verify", # 可选：验证后浏览器回跳地址
+    "factors": ["passkey", "totp"],             # 可选：限定可用因素
+    "ttl_seconds": 600                           # 可选：有效期，默认 600，范围 [60,1800]
+  }'
+# 返回
+{ "id": "<验证ID>", "verify_url": "https://iam.example.com/verify/<验证ID>",
+  "status": "pending", "expires_at": "2026-06-17T10:10:00Z" }
+```
+
+**步骤 2 · 引导用户到 `verify_url`** 完成验证。若提供了 `redirect_uri`，成功后浏览器带 `?verification_id=<ID>&status=verified` 自动回跳；回跳参数**仅作提示、不可作为信任凭据**。
+
+**步骤 3 · 后端回查权威结果**
+
+```bash
+curl "https://iam.example.com/api/v1/mfa-verifications/<验证ID>" \
+  -H "Authorization: Bearer tcp_xxxxxx_xxxxxxxx"
+# 返回（已完成）
+{ "id": "<验证ID>", "status": "verified", "user_id": "<UUID>",
+  "username": "zhangsan", "factor": "passkey", "verified_at": "..." }
+```
+
+- 验证**一次性**：完成后结果不可被覆盖；过期后该 `id` 返回 404。
+- **仅创建该请求的同一个 API 令牌**可回查其结果（跨令牌读取按 404 处理）。
+- 请校验返回的 `user_id`/`username` 是否为你期望验证的用户。
+
+---
+
 ## 7. 错误格式与状态码
 
 错误统一为 JSON，含机器可读 `code` 与中文 `detail`：
@@ -269,7 +311,8 @@ curl "https://iam.example.com/api/v1/permissions?user=zhangsan&app=wiki" \
 | 400 | 参数缺失/非法 |
 | 401 | 令牌缺失/无效/过期/已吊销 |
 | 403 | 作用域不足或无权访问该应用 |
-| 404 | 用户或应用不存在 |
+| 404 | 用户、应用或验证请求不存在/已过期 |
+| 409 | 验证请求已被完成（一次性，不可重复完成） |
 
 ---
 
