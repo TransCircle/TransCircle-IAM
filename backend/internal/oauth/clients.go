@@ -37,10 +37,21 @@ type Client struct {
 	PKCERequired            bool       `json:"pkce_required"`
 	SkipConsent             bool       `json:"skip_consent"`
 	Active                  bool       `json:"active"`
-	CreatedAt               time.Time  `json:"created_at"`
-	UpdatedAt               time.Time  `json:"updated_at"`
+	// Login access control. Empty across all three = unrestricted; otherwise a
+	// user must match at least one rule to complete authorization (see migration
+	// 0014). LoginRequiredPerms holds permission keys (resolved in the bound app).
+	LoginAllowedUserIDs   []uuid.UUID `json:"login_allowed_user_ids"`
+	LoginAllowedGroupKeys []string    `json:"login_allowed_group_keys"`
+	LoginRequiredPerms    []string    `json:"login_required_perms"`
+	CreatedAt             time.Time   `json:"created_at"`
+	UpdatedAt             time.Time   `json:"updated_at"`
 	// HasSecret indicates a confidential client has a stored hash.
 	HasSecret bool `json:"has_secret"`
+}
+
+// LoginRestricted reports whether the client limits which users may log in.
+func (c *Client) LoginRestricted() bool {
+	return len(c.LoginAllowedUserIDs) > 0 || len(c.LoginAllowedGroupKeys) > 0 || len(c.LoginRequiredPerms) > 0
 }
 
 // ClientService manages OAuth clients with secret hashing + one-time reveal.
@@ -57,14 +68,18 @@ func NewClientService(st *store.Store, hasher *crypto.Hasher, ks *keys.KeyStore)
 
 const clientCols = `id, client_id, client_name, app_id, public, token_endpoint_auth_method,
 	redirect_uris, post_logout_redirect_uris, grant_types, response_types, allowed_scopes,
-	allowed_app_keys, audience, pkce_required, skip_consent, active, created_at, updated_at,
+	allowed_app_keys, audience, pkce_required, skip_consent, active,
+	login_allowed_user_ids, login_allowed_group_keys, login_required_perms,
+	created_at, updated_at,
 	(secret_hash IS NOT NULL) AS has_secret`
 
 func scanClient(row pgx.Row) (*Client, error) {
 	var c Client
 	err := row.Scan(&c.ID, &c.ClientID, &c.ClientName, &c.AppID, &c.Public, &c.TokenEndpointAuthMethod,
 		&c.RedirectURIs, &c.PostLogoutRedirectURIs, &c.GrantTypes, &c.ResponseTypes, &c.AllowedScopes,
-		&c.AllowedAppKeys, &c.Audience, &c.PKCERequired, &c.SkipConsent, &c.Active, &c.CreatedAt, &c.UpdatedAt,
+		&c.AllowedAppKeys, &c.Audience, &c.PKCERequired, &c.SkipConsent, &c.Active,
+		&c.LoginAllowedUserIDs, &c.LoginAllowedGroupKeys, &c.LoginRequiredPerms,
+		&c.CreatedAt, &c.UpdatedAt,
 		&c.HasSecret)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
@@ -111,6 +126,9 @@ type CreateParams struct {
 	SkipConsent            bool
 	PKCERequired           bool
 	Active                 bool
+	LoginAllowedUserIDs    []uuid.UUID
+	LoginAllowedGroupKeys  []string
+	LoginRequiredPerms     []string
 }
 
 // Create inserts a client and returns it plus the generated secret (shown once
@@ -126,6 +144,9 @@ func (s *ClientService) Create(ctx context.Context, db store.DBTX, p CreateParam
 		AllowedScopes:  defaultIfEmpty(p.AllowedScopes, []string{"openid", "profile", "email"}),
 		AllowedAppKeys: orEmpty(p.AllowedAppKeys), Audience: orEmpty(p.Audience),
 		SkipConsent: p.SkipConsent, PKCERequired: p.PKCERequired, Active: p.Active,
+		LoginAllowedUserIDs:   orEmptyUUID(p.LoginAllowedUserIDs),
+		LoginAllowedGroupKeys: orEmpty(p.LoginAllowedGroupKeys),
+		LoginRequiredPerms:    orEmpty(p.LoginRequiredPerms),
 	}
 	authMethod := "client_secret_basic"
 	var secretPlain, secretHash string
@@ -152,11 +173,13 @@ func (s *ClientService) Create(ctx context.Context, db store.DBTX, p CreateParam
 		`INSERT INTO oauth_clients
 		   (id, client_id, client_name, secret_hash, client_secret_enc, client_secret_nonce, client_secret_dek_version,
 		    app_id, public, token_endpoint_auth_method, redirect_uris, post_logout_redirect_uris,
-		    grant_types, response_types, allowed_scopes, allowed_app_keys, audience, skip_consent, pkce_required, active)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+		    grant_types, response_types, allowed_scopes, allowed_app_keys, audience, skip_consent, pkce_required, active,
+		    login_allowed_user_ids, login_allowed_group_keys, login_required_perms)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
 		id, clientID, p.ClientName, nullStr(secretHash), secretEnc, secretNonce, dekVer,
 		p.AppID, p.Public, authMethod, c.RedirectURIs, c.PostLogoutRedirectURIs,
-		c.GrantTypes, c.ResponseTypes, c.AllowedScopes, c.AllowedAppKeys, c.Audience, p.SkipConsent, c.PKCERequired, c.Active)
+		c.GrantTypes, c.ResponseTypes, c.AllowedScopes, c.AllowedAppKeys, c.Audience, p.SkipConsent, c.PKCERequired, c.Active,
+		c.LoginAllowedUserIDs, c.LoginAllowedGroupKeys, c.LoginRequiredPerms)
 	if err != nil {
 		return nil, "", err
 	}
@@ -169,13 +192,15 @@ func (s *ClientService) Update(ctx context.Context, db store.DBTX, clientID stri
 	ct, err := db.Exec(ctx,
 		`UPDATE oauth_clients SET client_name=$2, redirect_uris=$3, post_logout_redirect_uris=$4,
 		    grant_types=$5, response_types=$6, allowed_scopes=$7, allowed_app_keys=$8, audience=$9,
-		    skip_consent=$10, pkce_required=$11, active=$12, app_id=$13
+		    skip_consent=$10, pkce_required=$11, active=$12, app_id=$13,
+		    login_allowed_user_ids=$14, login_allowed_group_keys=$15, login_required_perms=$16
 		  WHERE client_id=$1`,
 		clientID, p.ClientName, orEmpty(p.RedirectURIs), orEmpty(p.PostLogoutRedirectURIs),
 		defaultIfEmpty(p.GrantTypes, []string{"authorization_code", "refresh_token"}),
 		defaultIfEmpty(p.ResponseTypes, []string{"code"}),
 		defaultIfEmpty(p.AllowedScopes, []string{"openid", "profile", "email"}),
-		orEmpty(p.AllowedAppKeys), orEmpty(p.Audience), p.SkipConsent, p.PKCERequired, p.Active, p.AppID)
+		orEmpty(p.AllowedAppKeys), orEmpty(p.Audience), p.SkipConsent, p.PKCERequired, p.Active, p.AppID,
+		orEmptyUUID(p.LoginAllowedUserIDs), orEmpty(p.LoginAllowedGroupKeys), orEmpty(p.LoginRequiredPerms))
 	if err != nil {
 		return err
 	}
@@ -285,6 +310,15 @@ func defaultIfEmpty(v, def []string) []string {
 func orEmpty(v []string) []string {
 	if v == nil {
 		return []string{}
+	}
+	return v
+}
+
+// orEmptyUUID coalesces a nil slice to an empty one so NOT NULL uuid[] columns
+// are never sent a SQL NULL.
+func orEmptyUUID(v []uuid.UUID) []uuid.UUID {
+	if v == nil {
+		return []uuid.UUID{}
 	}
 	return v
 }

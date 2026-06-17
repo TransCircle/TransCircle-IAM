@@ -99,6 +99,10 @@ export interface OAuthClient {
   pkce_required: boolean;
   skip_consent: boolean;
   active: boolean;
+  /** Login allowlist (empty across all three = unrestricted; OR semantics). */
+  login_allowed_user_ids: string[];
+  login_allowed_group_keys: string[];
+  login_required_perms: string[];
   has_secret: boolean;
   created_at: string;
   updated_at: string;

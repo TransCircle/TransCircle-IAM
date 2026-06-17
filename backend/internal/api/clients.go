@@ -49,6 +49,10 @@ type clientReq struct {
 	AllowedAppKeys         []string   `json:"allowed_app_keys"`
 	Audience               []string   `json:"audience"`
 	SkipConsent            bool       `json:"skip_consent"`
+	// Login allowlist (empty across all three = unrestricted). OR semantics.
+	LoginAllowedUserIDs   []uuid.UUID `json:"login_allowed_user_ids"`
+	LoginAllowedGroupKeys []string    `json:"login_allowed_group_keys"`
+	LoginRequiredPerms    []string    `json:"login_required_perms"`
 	// Pointers so an omitted field defaults to true at creation (the secure
 	// default) while an explicit false on edit is honoured.
 	PKCERequired *bool `json:"pkce_required"`
@@ -64,6 +68,9 @@ func (cr clientReq) toParams() oauth.CreateParams {
 		GrantTypes: cr.GrantTypes, ResponseTypes: cr.ResponseTypes, AllowedScopes: cr.AllowedScopes,
 		AllowedAppKeys: cr.AllowedAppKeys, Audience: cr.Audience, SkipConsent: cr.SkipConsent,
 		PKCERequired: boolOrTrue(cr.PKCERequired), Active: boolOrTrue(cr.Active),
+		LoginAllowedUserIDs:   cr.LoginAllowedUserIDs,
+		LoginAllowedGroupKeys: cr.LoginAllowedGroupKeys,
+		LoginRequiredPerms:    cr.LoginRequiredPerms,
 	}
 }
 

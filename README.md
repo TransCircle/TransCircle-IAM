@@ -15,6 +15,7 @@
 - 作为 **OAuth2/OIDC 供应商**：`authorization_code`+PKCE、`refresh_token`（轮换+重用检测）、`client_credentials`；ID Token/Access Token 下发精简权限声明（`tc_app`/`tc_roles`/`tc_perm_version`），完整权限表与身份组列表（`tc_permissions`/`tc_groups`）经 UserInfo 与受保护 REST API 获取。
 - 密钥**初始化自动生成并入库**（零配置），AES-256-GCM 静态加密，可选 KEK 加固。
 - 内置：审计日志、会话远程吊销、Consent 同意屏、M2M API 令牌、管理员代登（防越权）。
+- **OAuth/OIDC 客户端登录限制**：可限定某应用仅允许指定用户 / 身份组 / 持有某权限者登录。
 - 后端**完全无状态**，可 `--scale backend=N` 横向扩展。
 
 ## 部署

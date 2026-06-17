@@ -11,10 +11,12 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/ory/fosite"
 
+	"github.com/transcircle/iam/internal/audit"
 	"github.com/transcircle/iam/internal/authctx"
 	"github.com/transcircle/iam/internal/avatars"
 	"github.com/transcircle/iam/internal/httpx"
 	"github.com/transcircle/iam/internal/logging"
+	"github.com/transcircle/iam/internal/rbac"
 )
 
 // Mount registers the OAuth2/OIDC protocol endpoints + discovery + JWKS.
@@ -118,6 +120,26 @@ func (p *Provider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		p.oauth2.WriteAuthorizeError(ctx, w, ar, fosite.ErrInvalidClient)
 		return
 	}
+
+	// Per-client login allowlist: if the client restricts who may log in, reject
+	// disallowed users BEFORE consent so they never even see the approval screen.
+	if client.LoginRestricted() {
+		allowed, aerr := p.userAllowedForClient(ctx, user, client)
+		if aerr != nil {
+			p.oauth2.WriteAuthorizeError(ctx, w, ar, fosite.ErrServerError.WithHint("无法校验访问权限"))
+			return
+		}
+		if !allowed {
+			p.audit.Log(ctx, audit.Event{
+				Action: "oauth.login_denied", Result: audit.ResultDenied,
+				TargetType: "client", TargetID: client.ClientID, TargetLabel: client.ClientName,
+				Metadata: map[string]any{"user": user.Username, "reason": "client_login_restricted"},
+			})
+			p.oauth2.WriteAuthorizeError(ctx, w, ar, fosite.ErrAccessDenied.WithHint("你没有登录该应用的权限，请联系管理员"))
+			return
+		}
+	}
+
 	scopes := []string(ar.GetRequestedScopes())
 
 	// Trusted clients skip the prompt entirely. Every other client must be
@@ -144,6 +166,58 @@ func (p *Provider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	p.finishAuthorize(w, r, ar, client)
+}
+
+// userAllowedForClient evaluates a restricted client's login allowlist with OR
+// semantics: the user passes if their id is allowlisted, OR they belong to an
+// allowlisted identity group, OR they hold one of the required permissions
+// (resolved within the client's bound application when one is set, otherwise
+// across every application). Callers must first check client.LoginRestricted().
+func (p *Provider) userAllowedForClient(ctx context.Context, user *rbac.User, client *Client) (bool, error) {
+	if slices.Contains(client.LoginAllowedUserIDs, user.ID) {
+		return true, nil
+	}
+	if len(client.LoginAllowedGroupKeys) > 0 {
+		groups, err := p.repo.UserGroupKeys(ctx, p.store.Pool, user.ID)
+		if err != nil {
+			return false, err
+		}
+		for _, g := range groups {
+			if slices.Contains(client.LoginAllowedGroupKeys, g) {
+				return true, nil
+			}
+		}
+	}
+	if len(client.LoginRequiredPerms) > 0 {
+		all, err := p.authz.AllPermissions(ctx, user.ID)
+		if err != nil {
+			return false, err
+		}
+		// Scope the permission match to the bound application when known so a
+		// permission key only counts within the app the client represents. If the
+		// app lookup fails, fail CLOSED (return the error) rather than silently
+		// widening the rule to a cross-app key match.
+		if client.AppID != nil {
+			app, aerr := p.repo.GetApplication(ctx, p.store.Pool, *client.AppID)
+			if aerr != nil {
+				return false, aerr
+			}
+			for _, perm := range all[app.Key] {
+				if slices.Contains(client.LoginRequiredPerms, perm) {
+					return true, nil
+				}
+			}
+			return false, nil
+		}
+		for _, perms := range all {
+			for _, perm := range perms {
+				if slices.Contains(client.LoginRequiredPerms, perm) {
+					return true, nil
+				}
+			}
+		}
+	}
+	return false, nil
 }
 
 func (p *Provider) finishAuthorize(w http.ResponseWriter, r *http.Request, ar fosite.AuthorizeRequester, client *Client) {

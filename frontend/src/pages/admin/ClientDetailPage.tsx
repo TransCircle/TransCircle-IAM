@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, RefreshCw, Eye, Trash2, Save } from "lucide-react";
+import { ArrowLeft, RefreshCw, Eye, Trash2, Save, X } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
 import {
   Badge,
@@ -10,10 +10,12 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  CheckRow,
   Checkbox,
   CopyButton,
   Field,
   Input,
+  Label,
   PageHeader,
   Select,
   Spinner,
@@ -21,9 +23,10 @@ import {
   Textarea,
 } from "@/components/ui";
 import { Dialog, ConfirmDialog } from "@/components/Dialog";
+import { UserSearchSelect } from "@/components/UserSearchSelect";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/auth/AuthProvider";
-import type { Application, OAuthClient } from "@/lib/types";
+import type { Application, Group, OAuthClient, Permission, User } from "@/lib/types";
 
 const ALL_SCOPES = ["openid", "profile", "email", "offline_access", "tc.permissions"];
 const ALL_GRANTS = ["authorization_code", "refresh_token", "client_credentials"];
@@ -44,6 +47,9 @@ interface Form {
   skip_consent: boolean;
   pkce_required: boolean;
   active: boolean;
+  loginUsers: string[];
+  loginGroups: string[];
+  loginPerms: string[];
 }
 
 function toForm(c: OAuthClient): Form {
@@ -60,6 +66,9 @@ function toForm(c: OAuthClient): Form {
     skip_consent: c.skip_consent,
     pkce_required: c.pkce_required,
     active: c.active,
+    loginUsers: c.login_allowed_user_ids ?? [],
+    loginGroups: c.login_allowed_group_keys ?? [],
+    loginPerms: c.login_required_perms ?? [],
   };
 }
 
@@ -114,6 +123,33 @@ export function ClientDetailPage() {
     queryKey: ["applications"],
     queryFn: async () => (await api.get("/api/v1/admin/applications")).data.applications ?? [],
   });
+  const groups = useQuery<Group[]>({
+    queryKey: ["groups-all"],
+    queryFn: async () => (await api.get("/api/v1/admin/groups")).data.groups ?? [],
+  });
+  // Permissions of the bound application drive the "required permission" picker.
+  const boundAppId = form?.app_id ?? "";
+  const appPerms = useQuery<Permission[]>({
+    queryKey: ["app-perms", boundAppId],
+    enabled: !!boundAppId,
+    queryFn: async () => (await api.get(`/api/v1/admin/applications/${boundAppId}/permissions`)).data.permissions ?? [],
+  });
+  // Resolve display labels for the currently-allowlisted users (the client only
+  // stores their ids); refetches whenever the selection changes.
+  const loginUsers = form?.loginUsers ?? [];
+  const selectedUsers = useQuery<User[]>({
+    queryKey: ["client-login-users", loginUsers],
+    enabled: loginUsers.length > 0,
+    queryFn: async () =>
+      Promise.all(
+        loginUsers.map((id) =>
+          api
+            .get(`/api/v1/admin/users/${id}`)
+            .then((r) => r.data as User)
+            .catch(() => ({ id, username: id, display_name: id, email: "" } as User))
+        )
+      ),
+  });
 
   React.useEffect(() => {
     if (client.data) setForm(toForm(client.data));
@@ -134,6 +170,9 @@ export function ClientDetailPage() {
         skip_consent: form!.skip_consent,
         pkce_required: form!.pkce_required,
         active: form!.active,
+        login_allowed_user_ids: form!.loginUsers,
+        login_allowed_group_keys: form!.loginGroups,
+        login_required_perms: form!.loginPerms,
       }),
     onSuccess: () => {
       toast("已保存", "success");
@@ -236,7 +275,10 @@ export function ClientDetailPage() {
               <Select
                 value={form.app_id}
                 disabled={!canWrite}
-                onValueChange={(v) => set("app_id", v)}
+                // Changing the bound app changes how login_required_perms are
+                // scoped, so drop any previously-picked permission keys to avoid
+                // silently submitting stale (now hidden) restrictions.
+                onValueChange={(v) => setForm((f) => (f ? { ...f, app_id: v, loginPerms: [] } : f))}
                 placeholder="（不绑定）"
                 options={[{ value: "", label: "（不绑定）" }, ...(apps.data ?? []).map((a) => ({ value: a.id, label: a.display_name }))]}
               />
@@ -301,6 +343,97 @@ export function ClientDetailPage() {
             <div className="flex items-center justify-between gap-3 rounded-lg border p-3 text-sm">
               <span>可信应用（跳过授权同意屏）</span>
               <Switch checked={form.skip_consent} disabled={!canWrite} onCheckedChange={(v) => set("skip_consent", v)} />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex-row items-center justify-between">
+            <CardTitle>登录访问限制</CardTitle>
+            {form.loginUsers.length || form.loginGroups.length || form.loginPerms.length ? (
+              <Badge variant="warning">已限制</Badge>
+            ) : (
+              <Badge variant="muted">不限制</Badge>
+            )}
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <p className="rounded-md border bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground">
+              限定哪些人可以登录此应用。<b className="text-foreground">三项全部留空 = 不限制</b>（任何已认证用户均可登录）。
+              配置后采用<b className="text-foreground">「满足任一即可」</b>规则：用户只要命中下列任意一条即可登录。被拒绝的用户在授权时会收到「无登录权限」。
+            </p>
+
+            <div className="space-y-2">
+              <Label>允许的用户</Label>
+              <UserSearchSelect
+                selectedIds={new Set(form.loginUsers)}
+                disabled={!canWrite}
+                fetchOptions={async (search) => {
+                  const r = await api.get(`/api/v1/admin/users?search=${encodeURIComponent(search)}&limit=20`);
+                  return (r.data.users ?? []).map((u: User) => ({ id: u.id, label: u.display_name || u.username, sublabel: u.username, avatar_url: u.avatar_url }));
+                }}
+                onAdd={(o) => set("loginUsers", [...form.loginUsers, o.id])}
+                onRemove={(o) => set("loginUsers", form.loginUsers.filter((x) => x !== o.id))}
+              />
+              {form.loginUsers.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {(selectedUsers.data ?? form.loginUsers.map((id) => ({ id, username: id, display_name: id } as User))).map((u) => (
+                    <span key={u.id} className="inline-flex items-center gap-1 rounded-md border bg-muted/40 py-1 pl-2 pr-1 text-xs">
+                      {u.display_name || u.username}
+                      {canWrite && (
+                        <button type="button" aria-label="移除" className="rounded p-0.5 text-muted-foreground hover:text-destructive" onClick={() => set("loginUsers", form.loginUsers.filter((x) => x !== u.id))}>
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>允许的身份组</Label>
+              {(groups.data ?? []).length === 0 ? (
+                <p className="text-xs text-muted-foreground">暂无身份组。</p>
+              ) : (
+                <div className="grid gap-1.5 sm:grid-cols-2">
+                  {(groups.data ?? []).map((g) => (
+                    <CheckRow
+                      key={g.key}
+                      checked={form.loginGroups.includes(g.key)}
+                      disabled={!canWrite}
+                      onToggle={(c) => set("loginGroups", c ? [...form.loginGroups, g.key] : form.loginGroups.filter((x) => x !== g.key))}
+                    >
+                      <span className="truncate font-medium">{g.display_name}</span>
+                      <code className="text-[11px] text-muted-foreground">{g.key}</code>
+                    </CheckRow>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>所需权限</Label>
+              {!boundAppId ? (
+                <p className="text-xs text-muted-foreground">先在上方「绑定应用」后，可按该应用的权限限制登录。</p>
+              ) : appPerms.isLoading ? (
+                <div className="py-2"><Spinner className="h-4 w-4" /></div>
+              ) : (appPerms.data ?? []).length === 0 ? (
+                <p className="text-xs text-muted-foreground">该应用暂无可选权限。</p>
+              ) : (
+                <div className="grid gap-1.5 sm:grid-cols-2">
+                  {(appPerms.data ?? []).map((perm) => (
+                    <CheckRow
+                      key={perm.key}
+                      checked={form.loginPerms.includes(perm.key)}
+                      disabled={!canWrite}
+                      onToggle={(c) => set("loginPerms", c ? [...form.loginPerms, perm.key] : form.loginPerms.filter((x) => x !== perm.key))}
+                    >
+                      <span className="truncate font-medium">{perm.display_name || perm.key}</span>
+                      <code className="text-[11px] text-muted-foreground">{perm.key}</code>
+                    </CheckRow>
+                  ))}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
