@@ -129,6 +129,7 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.Method("POST", "/api/v1/admin/security/keys/rotate", h.guardStepUp(authz.PermSecurityRotate, h.rotateSigningKey))
 
 		// API tokens
+		r.Method("GET", "/api/v1/admin/api-tokens/meta", h.guard(authz.PermAPITokensRead, h.apiTokenMeta))
 		r.Method("GET", "/api/v1/admin/api-tokens", h.guard(authz.PermAPITokensRead, h.listAPITokens))
 		r.Method("POST", "/api/v1/admin/api-tokens", h.guardStepUp(authz.PermAPITokensWrite, h.createAPIToken))
 		r.Method("PATCH", "/api/v1/admin/api-tokens/{id}", h.guardStepUp(authz.PermAPITokensWrite, h.updateAPIToken))

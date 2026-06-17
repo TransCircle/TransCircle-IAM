@@ -27,6 +27,75 @@ type apiTokenInfo struct {
 	CreatedAt      time.Time  `json:"created_at"`
 }
 
+// Token scope catalog — the source of truth the admin UI renders as a checklist
+// instead of a free-text field. Only scopes actually enforced by the API belong
+// here (iam.permissions.read gates the permissions API; iam.mfa.verify gates the
+// standalone two-factor verification API).
+const ScopeMFAVerify = "iam.mfa.verify"
+
+type tokenScope struct {
+	Key         string `json:"key"`
+	Label       string `json:"label"`
+	Description string `json:"description"`
+}
+
+var tokenScopeCatalog = []tokenScope{
+	{Key: "iam.permissions.read", Label: "查询用户权限", Description: "调用 GET /api/v1/permissions 查询某用户在某应用下的角色、权限与身份组"},
+	{Key: ScopeMFAVerify, Label: "发起两步验证", Description: "调用两步验证接口生成验证链接，引导用户完成 TOTP / 通行密钥验证，并回查验证结果"},
+}
+
+// validateTokenScopes enforces the simplified contract: a token carries at least
+// one scope, and every scope must come from the known catalog (no free-form
+// strings that could silently become effective when a future endpoint checks them).
+func validateTokenScopes(scopes []string) error {
+	if len(scopes) == 0 {
+		return httpx.ErrBadRequest.WithDetail("请至少选择一个作用域")
+	}
+	for _, s := range scopes {
+		known := false
+		for _, c := range tokenScopeCatalog {
+			if c.Key == s {
+				known = true
+				break
+			}
+		}
+		if !known {
+			return httpx.ErrBadRequest.WithDetail("未知作用域：" + s)
+		}
+	}
+	return nil
+}
+
+// apiTokenMeta returns everything the create/edit token form needs to render
+// pickers instead of free-text fields: the enforced scope catalog, the list of
+// applications (key + name) the token can be limited to, and whether the caller
+// may mint an unrestricted (all-applications) token.
+func (h *Handlers) apiTokenMeta(w http.ResponseWriter, r *http.Request) error {
+	ctx := r.Context()
+	apps, err := h.Repo.ListApplications(ctx, h.Store.Pool)
+	if err != nil {
+		return err
+	}
+	type appOpt struct {
+		Key         string `json:"key"`
+		DisplayName string `json:"display_name"`
+	}
+	appOpts := []appOpt{}
+	for _, a := range apps {
+		appOpts = append(appOpts, appOpt{Key: a.Key, DisplayName: a.DisplayName})
+	}
+	super, err := h.isSuperAdmin(ctx, actorID(r))
+	if err != nil {
+		return err
+	}
+	httpx.JSON(w, r, http.StatusOK, map[string]any{
+		"scopes":         tokenScopeCatalog,
+		"applications":   appOpts,
+		"can_unrestrict": super,
+	})
+	return nil
+}
+
 func (h *Handlers) listAPITokens(w http.ResponseWriter, r *http.Request) error {
 	rows, err := h.Store.Pool.Query(r.Context(),
 		`SELECT id, name, prefix, scopes, allowed_app_keys, expires_at, revoked_at, last_used_at, created_at
@@ -61,6 +130,9 @@ func (h *Handlers) createAPIToken(w http.ResponseWriter, r *http.Request) error 
 	}
 	if req.Name == "" {
 		return httpx.ErrBadRequest.WithDetail("名称必填")
+	}
+	if err := validateTokenScopes(req.Scopes); err != nil {
+		return err
 	}
 	if req.ExpiresInDays < 0 {
 		return httpx.ErrBadRequest.WithDetail("有效期天数不能为负(0 表示永不过期)")
@@ -136,6 +208,9 @@ func (h *Handlers) updateAPIToken(w http.ResponseWriter, r *http.Request) error 
 	}
 	if req.Name == "" {
 		return httpx.ErrBadRequest.WithDetail("名称必填")
+	}
+	if err := validateTokenScopes(req.Scopes); err != nil {
+		return err
 	}
 	if req.ExpiresInDays != nil && *req.ExpiresInDays < 0 {
 		return httpx.ErrBadRequest.WithDetail("有效期天数不能为负(0 表示永不过期)")
@@ -236,7 +311,7 @@ func (h *Handlers) machineAuth(next http.Handler) http.Handler {
 			return
 		}
 		_, _ = h.Store.Pool.Exec(r.Context(), `UPDATE api_tokens SET last_used_at=now() WHERE id=$1`, id)
-		p := &authctx.Principal{IsMachine: true, TokenName: name, TokenScopes: scopes, AllowedApps: apps}
+		p := &authctx.Principal{IsMachine: true, TokenID: id, TokenName: name, TokenScopes: scopes, AllowedApps: apps}
 		next.ServeHTTP(w, r.WithContext(authctx.With(r.Context(), p)))
 	})
 }
