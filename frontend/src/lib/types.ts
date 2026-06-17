@@ -122,12 +122,15 @@ export interface AuditEntry {
   id: string;
   occurred_at: string;
   actor_label: string;
+  actor_user_id: string | null;
+  impersonator_user_id: string | null;
   action: string;
   target_type: string;
   target_id: string;
   target_label: string;
   result: string;
   ip: string;
+  user_agent: string;
   request_id: string;
   metadata: unknown;
 }
