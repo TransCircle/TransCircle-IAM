@@ -5,7 +5,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { api, errorMessage } from "@/lib/api";
 import { registerPasskey } from "@/lib/webauthn";
 import { useAuth } from "@/auth/AuthProvider";
-import { Button, Card, CardContent, CardHeader, CardTitle, CopyButton, Field, Input, PageHeader, PasswordInput } from "@/components/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, CopyButton, Field, Input, PageHeader, PasswordInput, Spinner } from "@/components/ui";
 import { Dialog, ConfirmDialog } from "@/components/Dialog";
 import { useToast } from "@/components/Toast";
 import { formatDate } from "@/lib/utils";
@@ -251,11 +251,45 @@ export function SecurityPage() {
   );
 }
 
+// parseOtpauth pulls the human-meaningful pieces out of an otpauth:// URI so the
+// dialog can show a copyable secret and the account/issuer it will be filed under.
+function parseOtpauth(uri: string): { secret: string; account: string; issuer: string; digits: string; period: string; algorithm: string } {
+  const empty = { secret: "", account: "", issuer: "", digits: "6", period: "30", algorithm: "SHA1" };
+  if (!uri) return empty;
+  try {
+    const u = new URL(uri);
+    const p = u.searchParams;
+    // Label is /totp/{issuer}:{account} (issuer prefix optional). Split on the
+    // FIRST colon only so an account value containing a colon is preserved.
+    const label = decodeURIComponent(u.pathname.replace(/^\/+/, "").replace(/^totp\/?/i, ""));
+    const ci = label.indexOf(":");
+    const a = ci >= 0 ? label.slice(0, ci) : "";
+    const b = ci >= 0 ? label.slice(ci + 1) : label;
+    return {
+      secret: p.get("secret") ?? "",
+      issuer: p.get("issuer") ?? a ?? "",
+      account: b ?? a ?? "",
+      digits: p.get("digits") ?? "6",
+      period: p.get("period") ?? "30",
+      algorithm: p.get("algorithm") ?? "SHA1",
+    };
+  } catch {
+    return empty;
+  }
+}
+
+// groupSecret formats a base32 secret into space-separated quads for readability
+// and easier manual entry / proofreading.
+function groupSecret(s: string): string {
+  return (s.match(/.{1,4}/g) ?? []).join(" ");
+}
+
 function TOTPDialog({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
   const { toast } = useToast();
   const [otpauth, setOtpauth] = React.useState("");
   const [code, setCode] = React.useState("");
   const [loading, setLoading] = React.useState(false);
+  const [showManual, setShowManual] = React.useState(false);
 
   const began = React.useRef(false);
   React.useEffect(() => {
@@ -268,11 +302,15 @@ function TOTPDialog({ open, onClose, onDone }: { open: boolean; onClose: () => v
       began.current = false;
       setOtpauth("");
       setCode("");
+      setShowManual(false);
     }
   }, [open]); // eslint-disable-line
 
+  const info = React.useMemo(() => parseOtpauth(otpauth), [otpauth]);
+  const ready = code.length === 6 && !loading;
+
   async function confirm() {
-    if (loading) return;
+    if (!ready) return;
     setLoading(true);
     try {
       await api.post("/api/v1/auth/mfa/totp/enroll/finish", { code });
@@ -286,16 +324,83 @@ function TOTPDialog({ open, onClose, onDone }: { open: boolean; onClose: () => v
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title="绑定 TOTP" onSubmit={confirm} footer={<Button type="submit" loading={loading}>确认</Button>}>
-      <div className="space-y-3">
-        {otpauth && (
-          <div className="flex justify-center rounded-md border bg-white p-4">
-            <QRCodeSVG value={otpauth} size={160} />
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="绑定动态口令 (TOTP)"
+      description="使用 Microsoft / Google Authenticator、1Password、Authy 等任意兼容应用扫码或手动添加，然后输入应用生成的 6 位验证码。"
+      onSubmit={confirm}
+      footer={
+        <>
+          <Button variant="outline" type="button" onClick={onClose}>取消</Button>
+          <Button type="submit" loading={loading} disabled={!ready}>完成绑定</Button>
+        </>
+      }
+    >
+      <div className="space-y-5">
+        {/* Step 1 — scan */}
+        <section className="space-y-2.5">
+          <div className="mono-label text-muted-foreground">第 1 步 · 扫描二维码</div>
+          <div className="flex flex-col items-center gap-3 rounded-lg border bg-muted/30 p-4">
+            <div className="rounded-lg border bg-white p-3 shadow-sm">
+              {otpauth ? (
+                <QRCodeSVG value={otpauth} size={168} />
+              ) : (
+                <div className="flex h-[168px] w-[168px] items-center justify-center text-muted-foreground">
+                  <Spinner className="h-6 w-6" />
+                </div>
+              )}
+            </div>
+            {info.account && (
+              <p className="text-center text-xs text-muted-foreground">
+                将以 <span className="font-medium text-foreground">{info.issuer || "TransCircle"}</span>
+                {" · "}
+                <span className="font-medium text-foreground">{info.account}</span> 添加
+              </p>
+            )}
           </div>
-        )}
-        <Field label="验证码">
-          <Input value={code} autoFocus onChange={(e) => setCode(e.target.value)} inputMode="numeric" />
-        </Field>
+        </section>
+
+        {/* Step 2 — manual entry */}
+        <section className="space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div className="mono-label text-muted-foreground">第 2 步 · 无法扫码？手动输入密钥</div>
+            <button type="button" className="text-xs text-primary hover:underline" onClick={() => setShowManual((v) => !v)}>
+              {showManual ? "收起" : "展开"}
+            </button>
+          </div>
+          {showManual && (
+            <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">账户密钥（区分大小写）</div>
+                <div className="flex items-center justify-between gap-2 rounded-md border bg-card p-2.5">
+                  <code className="select-all break-all font-mono text-sm tracking-wider">{info.secret ? groupSecret(info.secret) : "—"}</code>
+                  {info.secret && <CopyButton value={info.secret} />}
+                </div>
+              </div>
+              <dl className="grid grid-cols-3 gap-2 text-center text-[11px] text-muted-foreground">
+                <div className="rounded-md border bg-card py-1.5"><dt>类型</dt><dd className="font-medium text-foreground">基于时间</dd></div>
+                <div className="rounded-md border bg-card py-1.5"><dt>位数</dt><dd className="font-medium text-foreground">{info.digits}</dd></div>
+                <div className="rounded-md border bg-card py-1.5"><dt>周期</dt><dd className="font-medium text-foreground">{info.period}s</dd></div>
+              </dl>
+            </div>
+          )}
+        </section>
+
+        {/* Step 3 — verify */}
+        <section className="space-y-2.5">
+          <div className="mono-label text-muted-foreground">第 3 步 · 输入验证码</div>
+          <Input
+            value={code}
+            autoFocus
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            placeholder="6 位数字"
+            maxLength={6}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            className="text-center font-mono text-lg tracking-[0.5em]"
+          />
+        </section>
       </div>
     </Dialog>
   );
