@@ -9,18 +9,28 @@ const ACTION_LABELS: Record<string, string> = {
   "login.failure": "登录失败",
   "login.locked": "登录被锁定",
   "login.mfa_failure": "多因素验证失败",
+  "login.mfa_locked": "多因素验证被锁定",
   logout: "退出登录",
   "password.change": "修改密码",
   "auth.stepup": "二次验证",
+  "auth.stepup_failure": "二次验证失败",
+  "auth.stepup_locked": "二次验证被锁定",
   "account.profile.update": "更新个人资料",
+  "account.avatar.update": "更新头像",
   // 多因素
   "mfa.totp.enroll": "绑定动态口令",
   "mfa.totp.delete": "移除动态口令",
   "mfa.webauthn.register": "注册通行密钥",
   "mfa.webauthn.delete": "删除通行密钥",
+  "mfa.webauthn.rename": "重命名通行密钥",
   "mfa.recovery.generate": "生成恢复码",
+  // 两步验证接口（对应用提供）
+  "mfa.verify.request": "应用发起两步验证",
+  "mfa.verify.success": "完成两步验证",
   // OAuth
   "oauth.consent": "OAuth 授权同意",
+  "oauth.consent_denied": "OAuth 授权被拒绝",
+  "oauth.login_denied": "应用登录被拒绝（访问受限）",
   // 代登
   "impersonate.start": "开始代登",
   "impersonate.stop": "结束代登",
@@ -30,6 +40,7 @@ const ACTION_LABELS: Record<string, string> = {
   "iam.user.update": "更新用户",
   "iam.user.delete": "删除用户",
   "iam.user.reset_password": "重置用户密码",
+  "iam.user.avatar.update": "更新用户头像",
   // 应用
   "iam.application.create": "创建应用",
   "iam.application.update": "更新应用",
@@ -49,6 +60,8 @@ const ACTION_LABELS: Record<string, string> = {
   "iam.group.delete": "删除身份组",
   "iam.group.add_role": "身份组添加角色",
   "iam.group.remove_role": "身份组移除角色",
+  "iam.group.add_members": "身份组添加成员",
+  "iam.group.remove_member": "身份组移除成员",
   // OIDC 客户端
   "iam.client.create": "创建 OIDC 客户端",
   "iam.client.update": "更新 OIDC 客户端",
@@ -92,6 +105,7 @@ const TARGET_TYPE_LABELS: Record<string, string> = {
   settings: "系统设置",
   signing_key: "签名密钥",
   api_token: "API 令牌",
+  mfa_verification: "两步验证",
 };
 
 export function auditTargetTypeLabel(t: string): string {
