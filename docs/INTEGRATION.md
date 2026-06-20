@@ -1,6 +1,6 @@
 # TransCircle-IAM 接入指南
 
-把 TransCircle 作为统一登录（SSO）与权限中心接入你的应用。本文是面向第三方开发者的完整、可照做的集成手册。文中以 `https://iam.example.com` 代指 IAM 的对外地址（即你反向代理到的那个端口），请替换为实际值。
+把 TransCircle 作为统一登录（SSO）与权限中心接入你的应用。本文是面向第三方开发者的完整、可照做的集成手册。
 
 ---
 
@@ -36,19 +36,19 @@
 
 ```json
 {
-  "issuer": "https://iam.example.com",
-  "authorization_endpoint": "https://iam.example.com/oauth2/auth",
-  "token_endpoint": "https://iam.example.com/oauth2/token",
-  "userinfo_endpoint": "https://iam.example.com/oauth2/userinfo",
-  "jwks_uri": "https://iam.example.com/.well-known/jwks.json",
-  "introspection_endpoint": "https://iam.example.com/oauth2/introspect",
-  "revocation_endpoint": "https://iam.example.com/oauth2/revoke",
+  "issuer": "https://iam.transcircle.org",
+  "authorization_endpoint": "https://iam.transcircle.org/oauth2/auth",
+  "token_endpoint": "https://iam.transcircle.org/oauth2/token",
+  "userinfo_endpoint": "https://iam.transcircle.org/oauth2/userinfo",
+  "jwks_uri": "https://iam.transcircle.org/.well-known/jwks.json",
+  "introspection_endpoint": "https://iam.transcircle.org/oauth2/introspect",
+  "revocation_endpoint": "https://iam.transcircle.org/oauth2/revoke",
   "scopes_supported": ["openid","profile","email","offline_access","tc.permissions"],
   "response_types_supported": ["code"],
   "grant_types_supported": ["authorization_code","refresh_token","client_credentials"],
   "id_token_signing_alg_values_supported": ["RS256"],
   "code_challenge_methods_supported": ["S256"],
-  "claims_supported": ["sub","name","preferred_username","email","tc_app","tc_roles","tc_permissions","tc_groups","tc_perm_version"]
+  "claims_supported": ["sub","name","preferred_username","picture","email","tc_app","tc_roles","tc_permissions","tc_groups","tc_perm_version"]
 }
 ```
 
@@ -98,7 +98,7 @@
 ### 1.3 步骤 1 — 跳转授权
 
 ```
-GET https://iam.example.com/oauth2/auth?
+GET https://iam.transcircle.org/oauth2/auth?
   response_type=code
   &client_id=<client_id>
   &redirect_uri=<已登记回调>
@@ -114,7 +114,7 @@ GET https://iam.example.com/oauth2/auth?
 ### 1.4 步骤 2 — 用 code 换令牌
 
 ```bash
-curl -X POST https://iam.example.com/oauth2/token \
+curl -X POST https://iam.transcircle.org/oauth2/token \
   -d grant_type=authorization_code \
   -d code=<code> \
   -d redirect_uri=<同上> \
@@ -144,6 +144,7 @@ curl -X POST https://iam.example.com/oauth2/token \
   "sub": "<用户ID, UUID>",
   "preferred_username": "zhangsan",
   "name": "张三",
+  "picture": "https://iam.transcircle.org/api/v1/avatars/u/<用户ID>",
   "email": "zhangsan@example.com",
   "tc_app": "wiki",
   "tc_roles": ["editor", "viewer"],
@@ -151,10 +152,12 @@ curl -X POST https://iam.example.com/oauth2/token \
 }
 ```
 
+> **关于 `picture`（头像）**：随 `profile` scope 返回，是一个**稳定且公开**的直链 `https://iam.transcircle.org/api/v1/avatars/u/<用户ID>`，无需任何凭据即可直接用于 `<img src>`。该地址对每个用户固定不变，但内容**随用户更换头像自动更新**，可放心缓存此 URL（按需加 CDN/浏览器缓存）。用户未设置头像时该 claim **不出现**，且该地址返回 `404`，请回退到你方的默认头像。
+
 ### 1.6 步骤 4 — 刷新令牌（需 `offline_access`）
 
 ```bash
-curl -X POST https://iam.example.com/oauth2/token \
+curl -X POST https://iam.transcircle.org/oauth2/token \
   -d grant_type=refresh_token -d refresh_token=<rt> \
   -d client_id=<client_id> -d client_secret=<client_secret>
 ```
@@ -168,7 +171,7 @@ curl -X POST https://iam.example.com/oauth2/token \
 | scope | 含义 |
 |---|---|
 | `openid` | 必选，签发 ID Token |
-| `profile` | `name`、`preferred_username` |
+| `profile` | `name`、`preferred_username`、`picture`（头像直链） |
 | `email` | `email` |
 | `offline_access` | 签发 refresh_token |
 | `tc.permissions` | 该应用下的角色/权限/身份组与权限指纹 |
@@ -177,6 +180,7 @@ curl -X POST https://iam.example.com/oauth2/token \
 
 | 声明 | 含义 | 出现位置 |
 |---|---|---|
+| `picture` | 头像直链（随 `profile` 返回；未设置头像时不出现） | id_token / userinfo |
 | `tc_app` | 当前客户端绑定的应用 key | id_token / access_token / userinfo |
 | `tc_roles` | 用户在该应用下的角色 key 列表 | id_token / access_token / userinfo |
 | `tc_permissions` | 用户在该应用下的权限 key 列表 | **仅** userinfo / 机器 API |
@@ -190,13 +194,14 @@ curl -X POST https://iam.example.com/oauth2/token \
 **方式 A：UserInfo（登录态，带 `tc.permissions`）**
 
 ```bash
-curl https://iam.example.com/oauth2/userinfo -H "Authorization: Bearer <access_token>"
+curl https://iam.transcircle.org/oauth2/userinfo -H "Authorization: Bearer <access_token>"
 ```
 
 ```json
 {
   "sub": "<用户ID>",
   "preferred_username": "zhangsan",
+  "picture": "https://iam.transcircle.org/api/v1/avatars/u/<用户ID>",
   "email": "zhangsan@example.com",
   "tc_app": "wiki",
   "tc_roles": ["editor"],
@@ -237,7 +242,7 @@ const allowed = permissions.includes("doc.write");
 在「管理 → API 令牌」创建令牌（可限定 scope 与可访问应用）。令牌格式 `tcp_<prefix>_<secret>`，仅创建时显示一次。
 
 ```bash
-curl "https://iam.example.com/api/v1/permissions?user=zhangsan&app=wiki" \
+curl "https://iam.transcircle.org/api/v1/permissions?user=zhangsan&app=wiki" \
   -H "Authorization: Bearer tcp_xxxxxx_xxxxxxxxxxxxxxxxxxxxxxxx"
 ```
 
@@ -266,7 +271,7 @@ curl "https://iam.example.com/api/v1/permissions?user=zhangsan&app=wiki" \
 **步骤 1 · 发起验证请求**
 
 ```bash
-curl -X POST https://iam.example.com/api/v1/mfa-verifications \
+curl -X POST https://iam.transcircle.org/api/v1/mfa-verifications \
   -H "Authorization: Bearer tcp_xxxxxx_xxxxxxxx" \
   -H "Content-Type: application/json" \
   -d '{
@@ -276,7 +281,7 @@ curl -X POST https://iam.example.com/api/v1/mfa-verifications \
     "ttl_seconds": 600                           # 可选：有效期，默认 600，范围 [60,1800]
   }'
 # 返回
-{ "id": "<验证ID>", "verify_url": "https://iam.example.com/verify/<验证ID>",
+{ "id": "<验证ID>", "verify_url": "https://iam.transcircle.org/verify/<验证ID>",
   "status": "pending", "expires_at": "2026-06-17T10:10:00Z" }
 ```
 
@@ -285,15 +290,18 @@ curl -X POST https://iam.example.com/api/v1/mfa-verifications \
 **步骤 3 · 后端回查权威结果**
 
 ```bash
-curl "https://iam.example.com/api/v1/mfa-verifications/<验证ID>" \
+curl "https://iam.transcircle.org/api/v1/mfa-verifications/<验证ID>" \
   -H "Authorization: Bearer tcp_xxxxxx_xxxxxxxx"
 # 返回（已完成）
 { "id": "<验证ID>", "status": "verified", "user_id": "<UUID>",
-  "username": "zhangsan", "factor": "passkey", "verified_at": "..." }
+  "username": "zhangsan", "factor": "passkey",
+  "verified_at": "2026-06-17T10:03:11Z", "expires_at": "2026-06-17T10:10:00Z" }
 ```
 
-- 验证**一次性**：完成后结果不可被覆盖；过期后该 `id` 返回 404。
+- `status` 为 `pending` | `verified`；`factor` 为 `passkey` | `totp`。`user_id` / `username` / `factor` **仅在 `verified` 时返回**。
+- 验证结果在**有效期内可重复读取**；完成后结果不可被覆盖；过期后该 `id` 返回 404。
 - **仅创建该请求的同一个 API 令牌**可回查其结果（跨令牌读取按 404 处理）。
+- 令牌缺少 `iam.mfa.verify` 作用域时返回 403。
 - 请校验返回的 `user_id`/`username` 是否为你期望验证的用户。
 
 ---
@@ -312,7 +320,6 @@ curl "https://iam.example.com/api/v1/mfa-verifications/<验证ID>" \
 | 401 | 令牌缺失/无效/过期/已吊销 |
 | 403 | 作用域不足或无权访问该应用 |
 | 404 | 用户、应用或验证请求不存在/已过期 |
-| 409 | 验证请求已被完成（一次性，不可重复完成） |
 
 ---
 
@@ -320,7 +327,7 @@ curl "https://iam.example.com/api/v1/mfa-verifications/<验证ID>" \
 
 ```js
 // 1) 用 code 换令牌
-const tok = await fetch("https://iam.example.com/oauth2/token", {
+const tok = await fetch("https://iam.transcircle.org/oauth2/token", {
   method: "POST",
   headers: { "content-type": "application/x-www-form-urlencoded" },
   body: new URLSearchParams({
@@ -330,7 +337,7 @@ const tok = await fetch("https://iam.example.com/oauth2/token", {
 }).then(r => r.json());
 
 // 2) 取用户与完整权限/身份组
-const me = await fetch("https://iam.example.com/oauth2/userinfo", {
+const me = await fetch("https://iam.transcircle.org/oauth2/userinfo", {
   headers: { authorization: "Bearer " + tok.access_token },
 }).then(r => r.json());
 
