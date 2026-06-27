@@ -216,8 +216,8 @@ GET ${base}/oauth2/auth?
   -d code=<上一步的 code> \\
   -d redirect_uri=<同上> \\
   -d client_id=<client_id> \\
-  -d client_secret=<client_secret> \\   # 机密客户端必填
-  -d code_verifier=<verifier>           # 公共客户端用它代替密钥
+  -d client_secret=<client_secret> \\   # 仅机密客户端
+  -d code_verifier=<verifier>           # 所有客户端必填（已强制 PKCE）；机密客户端在此之外仍需 client_secret
 
 # 返回
 {
@@ -303,6 +303,7 @@ GET ${base}/oauth2/auth?
 {
   "sub": "<用户ID>",
   "preferred_username": "zhangsan",
+  "name": "张三",
   "picture": "${base}/api/v1/avatars/u/<用户ID>",
   "email": "zhangsan@example.com",
   "tc_app": "wiki",
@@ -453,8 +454,9 @@ const allowed = permissions.includes("doc.write");`}</Code>
             <CardTitle>十、错误格式与状态码</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
-            <p className="text-muted-foreground">管理与机器 API 的错误统一返回 JSON，含机器可读的 <code>code</code> 与中文 <code>detail</code>：</p>
-            <Code>{`{ "code": "forbidden", "detail": "令牌缺少 iam.permissions.read 作用域" }`}</Code>
+            <p className="text-muted-foreground">管理与机器 API（<code>/api/v1/*</code>、<code>/oauth2/userinfo</code>）的错误返回 JSON，含机器可读的 <code>code</code>、简短中文 <code>title</code> 与可选的 <code>detail</code>（无具体信息时不出现，请回退到 <code>title</code>）：</p>
+            <Code>{`{ "code": "forbidden", "title": "权限不足", "detail": "令牌缺少 iam.permissions.read 作用域" }`}</Code>
+            <p className="text-muted-foreground">OAuth2/OIDC 协议端点（<code>/oauth2/auth</code>、<code>/oauth2/token</code>、<code>/oauth2/introspect</code>、<code>/oauth2/revoke</code>）改用各自 RFC（6749/7662/7009）的标准错误格式 <code>{`{ "error": "invalid_grant", "error_description": "…" }`}</code>，<code>error_description</code> 可能为英文，建议用标准 OIDC 客户端库处理。</p>
             <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
               <li><b>400</b> 参数缺失/非法（如缺少 <code>user</code>/<code>app</code>）。</li>
               <li><b>401</b> 令牌缺失/无效/过期/已吊销。</li>

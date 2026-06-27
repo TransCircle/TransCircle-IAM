@@ -10,7 +10,7 @@
 |---|---|---|
 | ① OIDC 单点登录 | 用户登录 | 用户经本系统登录你的应用；登录后拿到用户身份与「在你这个应用下」的角色/权限/身份组。 |
 | ② 机器权限 API | 后端鉴权 | 你的后端用 API 令牌随时查询「某用户在某应用下」的角色/权限/身份组。 |
-| ③ 独立两步验证接口 | 敏感操作前校验本人 | 你的后端发起验证请求拿到验证链接，引导用户到本系统完成 通行密钥 / TOTP，再回查权威结果（见 §3）。需令牌带 `iam.mfa.verify` 作用域。 |
+| ③ 独立两步验证接口 | 敏感操作前校验本人 | 你的后端发起验证请求拿到验证链接，引导用户到本系统完成 通行密钥 / TOTP，再回查权威结果（见 §6b 步骤 3）。需令牌带 `iam.mfa.verify` 作用域。 |
 
 **术语与维度**
 
@@ -77,7 +77,7 @@
 - `refresh_token`：用 refresh_token 换新令牌（需 `offline_access`；一次性轮换）。
 - `client_credentials`：无用户上下文，机器以自身身份取访问令牌。
 
-机密客户端用 `client_secret_basic`/`client_secret_post` 认证；公共客户端用 PKCE 代替密钥。
+机密客户端用 `client_secret_basic`/`client_secret_post` 认证；公共客户端无密钥。**PKCE（S256）对所有客户端强制**——机密客户端在用 `client_secret` 认证之余，仍必须带 `code_verifier`，并非「公共客户端专用」。
 
 #### `GET|POST /oauth2/userinfo` — 用户信息（Bearer access_token）
 
@@ -119,8 +119,8 @@ curl -X POST https://iam.transcircle.org/oauth2/token \
   -d code=<code> \
   -d redirect_uri=<同上> \
   -d client_id=<client_id> \
-  -d client_secret=<client_secret> \   # 机密客户端必填
-  -d code_verifier=<verifier>          # 公共客户端用它代替 secret
+  -d client_secret=<client_secret> \   # 仅机密客户端
+  -d code_verifier=<verifier>          # 所有客户端必填（已强制 PKCE，与第 1 步 code_challenge 配对）；机密客户端在此之外仍需 client_secret
 ```
 
 返回：
@@ -201,6 +201,7 @@ curl https://iam.transcircle.org/oauth2/userinfo -H "Authorization: Bearer <acce
 {
   "sub": "<用户ID>",
   "preferred_username": "zhangsan",
+  "name": "张三",
   "picture": "https://iam.transcircle.org/api/v1/avatars/u/<用户ID>",
   "email": "zhangsan@example.com",
   "tc_app": "wiki",
@@ -308,11 +309,15 @@ curl "https://iam.transcircle.org/api/v1/mfa-verifications/<验证ID>" \
 
 ## 7. 错误格式与状态码
 
-错误统一为 JSON，含机器可读 `code` 与中文 `detail`：
+REST 与机器接口（`/api/v1/*`、`/oauth2/userinfo`）的错误为 JSON，含机器可读 `code`、简短中文 `title`，以及可选的 `detail`（更具体的说明；无具体信息时该字段不出现，请回退到 `title`）：
 
 ```json
-{ "code": "forbidden", "detail": "令牌缺少 iam.permissions.read 作用域" }
+{ "code": "forbidden", "title": "权限不足", "detail": "令牌缺少 iam.permissions.read 作用域" }
 ```
+
+> **OAuth2/OIDC 协议端点**（`/oauth2/auth`、`/oauth2/token`、`/oauth2/introspect`、`/oauth2/revoke`）不走上面的信封，而是遵循各自 RFC（6749 / 7662 / 7009）的标准错误格式，形如 `{ "error": "invalid_grant", "error_description": "…" }`（`/oauth2/auth` 通过 `redirect_uri` 的查询参数返回 `error`/`error_description`）；其 `error_description` 可能为英文。请用标准 OIDC 客户端库处理这些端点的错误。
+
+下表的状态码语义适用于全部端点：
 
 | 状态码 | 含义 |
 |---|---|
