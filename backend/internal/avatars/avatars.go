@@ -57,13 +57,16 @@ func fileFromPublicURL(publicURL string) string {
 
 // ServeCurrent streams the avatar backing a stored public URL (the user's
 // current avatar_url). Returns false (caller should 404) when the user has no
-// avatar or the file is missing.
+// avatar or the file is missing. This backs the per-user `picture` URL which is
+// served WITHOUT a session and documented as public + CDN-cacheable
+// (INTEGRATION.md §1.5), so it is sent with a `public` Cache-Control that shared
+// caches/CDNs will honor.
 func ServeCurrent(w http.ResponseWriter, r *http.Request, dataDir, publicURL string) bool {
 	file := fileFromPublicURL(publicURL)
 	if file == "" {
 		return false
 	}
-	return ServeFile(w, r, dataDir, file)
+	return serveFile(w, r, dataDir, file, "public, max-age=300")
 }
 
 var extByType = map[string]string{
@@ -167,8 +170,17 @@ func Remove(dataDir, publicURL string) {
 }
 
 // ServeFile validates the requested filename and streams the avatar. Returns
-// false (caller should 404) for an invalid name or a missing file.
+// false (caller should 404) for an invalid name or a missing file. This backs
+// the session-authenticated `/api/v1/avatars/{file}` route, so it stays
+// `private` — only the per-user picture URL (ServeCurrent) is public/CDN-cacheable.
 func ServeFile(w http.ResponseWriter, r *http.Request, dataDir, file string) bool {
+	return serveFile(w, r, dataDir, file, "private, max-age=300")
+}
+
+// serveFile validates the requested filename, sets the given Cache-Control, and
+// streams the avatar. Returns false (caller should 404) for an invalid name or a
+// missing file.
+func serveFile(w http.ResponseWriter, r *http.Request, dataDir, file, cacheControl string) bool {
 	if !fileRe.MatchString(file) {
 		return false
 	}
@@ -176,7 +188,7 @@ func ServeFile(w http.ResponseWriter, r *http.Request, dataDir, file string) boo
 	if st, err := os.Stat(path); err != nil || st.IsDir() {
 		return false
 	}
-	w.Header().Set("Cache-Control", "private, max-age=300")
+	w.Header().Set("Cache-Control", cacheControl)
 	http.ServeFile(w, r, path)
 	return true
 }
