@@ -46,21 +46,32 @@ func (p *Provider) computeAppClaims(ctx context.Context, userID, clientID string
 	return appClaims{
 		App:         ap.AppKey,
 		Roles:       ap.Roles,
-		PermVersion: permHash(ap.Permissions),
+		PermVersion: permFingerprint(ap.Roles, ap.Permissions, ap.Groups),
 		Permissions: ap.Permissions,
 		Groups:      ap.Groups,
 	}, nil
 }
 
-// permHash is a short stable digest so RPs can detect permission changes without
-// the full set in the ID token (must-fix #4).
-func permHash(perms []string) string {
-	if len(perms) == 0 {
+// permFingerprint is a short stable digest of the user's full per-app
+// authorization surface so RPs can detect changes without the complete sets in
+// the token (must-fix #4). It covers roles, permissions AND identity groups
+// because the integration contract (INTEGRATION.md §5) promises tc_perm_version
+// changes on ANY role/permission/group change, and §4 tells RPs to refresh their
+// cached tc_roles when it does — both of which break if the digest hashed
+// permissions alone (e.g. granting a role whose permissions the user already
+// holds would leave a permissions-only hash unchanged). Each category is sorted
+// and joined under its own separator so a key moving between categories can
+// never collide. Groups are global, so an unrelated group change bumps every
+// app's version — that only over-refreshes, which is safe.
+func permFingerprint(roles, perms, groups []string) string {
+	if len(roles) == 0 && len(perms) == 0 && len(groups) == 0 {
 		return "0"
 	}
-	sorted := slices.Clone(perms)
-	slices.Sort(sorted)
-	sum := sha256.Sum256([]byte(strings.Join(sorted, ",")))
+	r, p, g := slices.Clone(roles), slices.Clone(perms), slices.Clone(groups)
+	slices.Sort(r)
+	slices.Sort(p)
+	slices.Sort(g)
+	sum := sha256.Sum256([]byte(strings.Join(r, ",") + "|" + strings.Join(p, ",") + "|" + strings.Join(g, ",")))
 	return hex.EncodeToString(sum[:])[:12]
 }
 
@@ -72,6 +83,17 @@ func (p *Provider) enrich(ctx context.Context, sess *Session, user *rbac.User, c
 	sess.DefaultSession.Subject = user.ID.String()
 	sess.DefaultSession.Claims.Subject = user.ID.String()
 	sess.DefaultSession.Claims.Issuer = p.cfg.Issuer
+
+	// Stamp the client_id onto the access token. fosite's JWT access-token
+	// strategy does not emit client_id on its own, and UserInfo resolves the
+	// per-application tc_* claims via STATELESS JWT introspection — which can only
+	// recover the client (and thus the bound application) from a client_id claim.
+	// Without this the introspected client id is empty, computeAppClaims looks up
+	// an unknown client, and UserInfo silently drops tc_app/tc_roles/
+	// tc_permissions/tc_groups/tc_perm_version even though the ID token (built here
+	// with the real client id) carries them. Access-token only — the ID token
+	// already identifies the client via aud.
+	sess.Extra["client_id"] = clientID
 
 	idExtra := sess.DefaultSession.Claims.Extra
 	if idExtra == nil {
@@ -98,14 +120,21 @@ func (p *Provider) enrich(ctx context.Context, sess *Session, user *rbac.User, c
 		if err != nil {
 			return err
 		}
-		idExtra["tc_app"] = ac.App
-		idExtra["tc_roles"] = ac.Roles
-		idExtra["tc_perm_version"] = ac.PermVersion
-		// The access token carries only app/roles/version — never the full
-		// permission set (must-fix #4: keep tokens small; full set via UserInfo/REST).
-		sess.Extra["tc_app"] = ac.App
-		sess.Extra["tc_roles"] = ac.Roles
-		sess.Extra["tc_perm_version"] = ac.PermVersion
+		// Only emit tc_* when the client is actually bound to an application.
+		// computeAppClaims returns a zero value (App == "") for an unbound client;
+		// UserInfo already skips the whole block in that case (handleUserinfo), so
+		// guard here too — otherwise the token would carry tc_app:"" / tc_roles:null
+		// while UserInfo omits them, an inconsistent shape for the same session.
+		if ac.App != "" {
+			idExtra["tc_app"] = ac.App
+			idExtra["tc_roles"] = ac.Roles
+			idExtra["tc_perm_version"] = ac.PermVersion
+			// The access token carries only app/roles/version — never the full
+			// permission set (must-fix #4: keep tokens small; full set via UserInfo/REST).
+			sess.Extra["tc_app"] = ac.App
+			sess.Extra["tc_roles"] = ac.Roles
+			sess.Extra["tc_perm_version"] = ac.PermVersion
+		}
 	}
 	return nil
 }
