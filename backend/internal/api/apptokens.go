@@ -149,7 +149,13 @@ func (h *Handlers) createAPIToken(w http.ResponseWriter, r *http.Request) error 
 			return httpx.ErrBadRequest.WithDetail("请指定该令牌可访问的应用 key(仅超级管理员可创建不限应用的令牌)")
 		}
 	}
-	prefix := crypto.RandomToken(6)
+	// The prefix MUST stay delimiter-free: machineAuth recovers it by splitting
+	// "tcp_<prefix>_<secret>" on the FIRST '_'. A base64url prefix (RandomToken)
+	// can contain '_', which truncates the parsed prefix, fails the DB lookup, and
+	// renders ~12% of minted tokens permanently un-authenticatable. Hex has no '_'.
+	// The secret may keep base64url: SplitN(..., 2) keeps everything after the
+	// first '_' intact, so a '_' inside the secret is harmless.
+	prefix := crypto.RandomHex(6)
 	secret := crypto.RandomToken(24)
 	full := "tcp_" + prefix + "_" + secret
 	hash, err := h.Hasher.Hash(r.Context(), secret)

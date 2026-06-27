@@ -2,8 +2,33 @@ package crypto
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
+
+// TestRandomHexIsDelimiterFreeForTokenPrefix guards the api-token format. The
+// prefix is recovered by splitting "tcp_<prefix>_<secret>" on the FIRST '_'
+// (api.machineAuth), so a prefix containing '_' truncates the parsed value, the
+// DB lookup misses, and the token can never authenticate. A base64url prefix
+// (RandomToken) hit this for ~12% of minted tokens; the prefix must use RandomHex.
+func TestRandomHexIsDelimiterFreeForTokenPrefix(t *testing.T) {
+	for i := 0; i < 2000; i++ {
+		p := RandomHex(6)
+		if len(p) != 12 {
+			t.Fatalf("RandomHex(6) want 12 hex chars, got %d (%q)", len(p), p)
+		}
+		if strings.ContainsAny(p, "-_") {
+			t.Fatalf("token prefix must be delimiter-free, got %q", p)
+		}
+		// Reproduce the machineAuth parse: the token must split back into the
+		// exact prefix and secret even when the secret itself contains '_'.
+		full := "tcp_" + p + "_" + RandomToken(24)
+		parts := strings.SplitN(strings.TrimPrefix(full, "tcp_"), "_", 2)
+		if len(parts) != 2 || parts[0] != p {
+			t.Fatalf("token %q did not parse back to prefix %q: %#v", full, p, parts)
+		}
+	}
+}
 
 func TestArgon2RoundTrip(t *testing.T) {
 	h := NewHasher(16384, 1, 1, 4)
