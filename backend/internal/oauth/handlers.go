@@ -301,7 +301,13 @@ func (p *Provider) handleToken(w http.ResponseWriter, r *http.Request) {
 		if s, ok := ar.GetSession().(*Session); ok {
 			if uid, perr := uuidFromString(s.GetSubject()); perr == nil {
 				if user, uerr := p.repo.GetUser(ctx, p.store.Pool, uid); uerr == nil {
-					_ = p.enrich(ctx, s, user, ar.GetClient().GetID(), []string(ar.GetGrantedScopes()))
+					if eerr := p.enrich(ctx, s, user, ar.GetClient().GetID(), []string(ar.GetGrantedScopes())); eerr != nil {
+						logging.From(ctx).Warn("oauth: refresh re-enrich failed; rotated token may carry stale authorization",
+							"error", eerr, "user_id", uid.String(), "client_id", ar.GetClient().GetID())
+					}
+				} else {
+					logging.From(ctx).Warn("oauth: refresh re-enrich skipped; user lookup failed",
+						"error", uerr, "user_id", uid.String())
 				}
 			}
 		}
