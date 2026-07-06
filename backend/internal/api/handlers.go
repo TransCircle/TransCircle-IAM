@@ -108,8 +108,8 @@ func (h *Handlers) Mount(r chi.Router) {
 		// OAuth clients
 		r.Method("GET", "/api/v1/admin/clients", h.guard(authz.PermClientsRead, h.listClients))
 		r.Method("GET", "/api/v1/admin/clients/{clientID}", h.guard(authz.PermClientsRead, h.getClient))
-		r.Method("POST", "/api/v1/admin/clients", h.guard(authz.PermClientsWrite, h.createClient))
-		r.Method("PATCH", "/api/v1/admin/clients/{clientID}", h.guard(authz.PermClientsWrite, h.updateClient))
+		r.Method("POST", "/api/v1/admin/clients", h.guardStepUp(authz.PermClientsWrite, h.createClient))
+		r.Method("PATCH", "/api/v1/admin/clients/{clientID}", h.guardStepUp(authz.PermClientsWrite, h.updateClient))
 		r.Method("DELETE", "/api/v1/admin/clients/{clientID}", h.guardStepUp(authz.PermClientsDelete, h.deleteClient))
 		r.Method("POST", "/api/v1/admin/clients/{clientID}/rotate-secret", h.guardStepUp(authz.PermClientsRotateSecret, h.rotateClientSecret))
 		r.Method("POST", "/api/v1/admin/clients/{clientID}/secret/reveal", h.guardStepUp(authz.PermClientsRotateSecret, h.revealClientSecret))

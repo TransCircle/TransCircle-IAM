@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -74,6 +75,40 @@ func (cr clientReq) toParams() oauth.CreateParams {
 	}
 }
 
+// requireSuperAdminForSkipConsent enforces the contract that only a super-admin
+// may register or promote a first-party "skip consent" client (silent auth-code
+// issuance). A plain iam.clients.write holder must not be able to mint a client
+// that bypasses the user consent screen. See iam-main-api.md §5.1 / §8.
+func (h *Handlers) requireSuperAdminForSkipConsent(ctx context.Context, r *http.Request, skipConsent bool) error {
+	if !skipConsent {
+		return nil
+	}
+	super, err := h.isSuperAdmin(ctx, actorID(r))
+	if err != nil {
+		return err
+	}
+	if !super {
+		return httpx.ErrForbidden.WithDetail("仅超级管理员可将客户端标记为可信(skip_consent)")
+	}
+	return nil
+}
+
+// validateRedirectURIs 在注册期就拒绝明显非法的 redirect_uri：必须是绝对 URI 且不含
+// 片段(#)。不限制 scheme（https / http-localhost / 原生自定义 scheme 均可），授权时另由
+// fosite 精确匹配兜底。
+func validateRedirectURIs(uris []string) error {
+	for _, raw := range uris {
+		u, err := url.Parse(raw)
+		if err != nil || !u.IsAbs() {
+			return httpx.ErrBadRequest.WithDetail("redirect_uri 必须是绝对 URI：" + raw)
+		}
+		if u.Fragment != "" {
+			return httpx.ErrBadRequest.WithDetail("redirect_uri 不得包含片段(#)：" + raw)
+		}
+	}
+	return nil
+}
+
 func (h *Handlers) createClient(w http.ResponseWriter, r *http.Request) error {
 	var req clientReq
 	if err := httpx.DecodeJSON(r, &req); err != nil {
@@ -82,7 +117,13 @@ func (h *Handlers) createClient(w http.ResponseWriter, r *http.Request) error {
 	if req.ClientName == "" {
 		return httpx.ErrBadRequest.WithDetail("名称必填")
 	}
+	if err := validateRedirectURIs(req.RedirectURIs); err != nil {
+		return err
+	}
 	ctx := r.Context()
+	if err := h.requireSuperAdminForSkipConsent(ctx, r, req.SkipConsent); err != nil {
+		return err
+	}
 	var client *oauth.Client
 	var secret string
 	err := h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
@@ -109,7 +150,13 @@ func (h *Handlers) updateClient(w http.ResponseWriter, r *http.Request) error {
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		return err
 	}
+	if err := validateRedirectURIs(req.RedirectURIs); err != nil {
+		return err
+	}
 	ctx := r.Context()
+	if err := h.requireSuperAdminForSkipConsent(ctx, r, req.SkipConsent); err != nil {
+		return err
+	}
 	err := h.tx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if err := h.Clients.Update(ctx, tx, clientID, req.toParams()); err != nil {
 			return err
