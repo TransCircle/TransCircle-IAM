@@ -290,6 +290,8 @@ func adminResetPassword(ctx context.Context, username, explicit string) error {
 	if password == "" {
 		password = crypto.RandomToken(9)
 		force = true
+	} else if len([]rune(password)) < 12 {
+		return fmt.Errorf("显式密码至少需要 12 个字符")
 	}
 	hash, err := hasher.Hash(ctx, password)
 	if err != nil {
