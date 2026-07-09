@@ -65,6 +65,8 @@ export function Dialog({
   // Stable per-instance token used to identify this dialog in the shared stack.
   const idRef = React.useRef<symbol>(undefined as unknown as symbol);
   if (idRef.current === undefined) idRef.current = Symbol("dialog");
+  // Restore focus to the element that was focused before the dialog opened.
+  const restoreRef = React.useRef<Element | null>(null);
   // Callers pass inline arrows for onClose, so its identity changes on every
   // parent render (i.e. every keystroke in a controlled form). Effects below
   // must NOT depend on it, or they re-run and steal focus mid-typing — read
@@ -86,12 +88,13 @@ export function Dialog({
     return () => clearTimeout(t);
   }, [open]);
 
-  // Runs exactly once per open: focus the first focusable control so keyboard
-  // users land in the dialog, and join the shared stack (which locks body
-  // scroll while any dialog is open).
+  // Runs exactly once per open: save focused element, focus the first focusable
+  // control so keyboard users land in the dialog, and join the shared stack
+  // (which locks body scroll while any dialog is open).
   React.useEffect(() => {
     if (!open) return;
     const id = idRef.current;
+    restoreRef.current = document.activeElement;
     const t = setTimeout(() => {
       // Skip disabled controls so focus lands in the first *editable* field
       // (e.g. edit dialogs lead with a disabled, read-only `key` input).
@@ -104,15 +107,30 @@ export function Dialog({
     return () => {
       clearTimeout(t);
       popDialog(id);
+      // Focus return: restore the element that was focused before opening.
+      (restoreRef.current as HTMLElement)?.focus?.();
+      restoreRef.current = null;
     };
   }, [open]);
 
   React.useEffect(() => {
     if (!open) return;
+    const FOCUSABLE = 'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])';
     function onKey(e: KeyboardEvent) {
-      // Only the top-most dialog reacts, so Escape closes one layer at a time
-      // instead of dismissing every stacked dialog at once.
-      if (e.key === "Escape" && !lockClose && isTopDialog(idRef.current)) onCloseRef.current();
+      if (!isTopDialog(idRef.current)) return;
+      // Escape closes one layer at a time instead of dismissing every stacked dialog at once.
+      if (e.key === "Escape" && !lockClose) { onCloseRef.current(); return; }
+      // Focus trap: cycle Tab within the dialog panel.
+      if (e.key === "Tab") {
+        const panel = panelRef.current;
+        if (!panel) return;
+        const els = panel.querySelectorAll<HTMLElement>(FOCUSABLE);
+        if (els.length === 0) { e.preventDefault(); return; }
+        const first = els[0]!;
+        const last = els[els.length - 1]!;
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

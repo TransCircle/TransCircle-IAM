@@ -112,6 +112,9 @@ func (h *Handlers) listAPITokens(w http.ResponseWriter, r *http.Request) error {
 		}
 		out = append(out, t)
 	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
 	httpx.JSON(w, r, http.StatusOK, map[string]any{"tokens": out})
 	return nil
 }
