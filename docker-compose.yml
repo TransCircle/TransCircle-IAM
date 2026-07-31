@@ -53,18 +53,16 @@ services:
       IAM_REDIS_URL: redis://:${REDIS_PASSWORD:-iamredis}@redis:6379/0
       IAM_ISSUER: ${IAM_ISSUER:-http://localhost}
       IAM_COOKIE_SECURE: ${IAM_COOKIE_SECURE:-}
-      # 信任所有来源的 X-Forwarded-*（应用仅经你们的 nginx 暴露）。
-      IAM_TRUST_ALL_PROXIES: "true"
+      # 仅信任显式配置的反向代理 IP/CIDR；开发默认不采纳转发头。
+      IAM_TRUSTED_PROXIES: ${IAM_TRUSTED_PROXIES:-}
       IAM_CORS_ORIGINS: ${IAM_ISSUER:-http://localhost}
       IAM_BOOTSTRAP_OUT_FILE: /var/lib/iam/bootstrap.json
       IAM_KEK_ENABLED: ${IAM_KEK_ENABLED:-}
       IAM_KEK_FILE: ${IAM_KEK_FILE:-}
     ports:
-      # 发布到宿主机端口，供反代访问。注意：若 nginx 与本服务在同一宿主机的
-      # *容器* 内运行，请勿绑定 127.0.0.1（容器内的回环不是宿主机回环，会导致
-      # 502）。安全收敛优先用宿主机防火墙挡住该端口、或让 nginx 与本服务共用
-      # 同一 docker 网络后直接反代到 app:8080（无需对外发布端口）。
-      - "${APP_PORT:-8080}:8080"
+      # 安全默认：仅宿主机回环可访问。容器化 nginx 应与 app 共用 Docker 网络并直接
+      # 反代 app:8080；若 nginx 在宿主机上，则访问 127.0.0.1:${APP_PORT:-8080}。
+      - "127.0.0.1:${APP_PORT:-8080}:8080"
     volumes:
       - ./data/app:/var/lib/iam
     healthcheck:

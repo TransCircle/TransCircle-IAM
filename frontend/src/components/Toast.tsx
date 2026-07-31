@@ -1,5 +1,5 @@
 import * as React from "react";
-import { CheckCircle2, XCircle, Info } from "lucide-react";
+import { CheckCircle2, XCircle, Info, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type ToastKind = "success" | "error" | "info";
@@ -11,6 +11,12 @@ interface ToastItem {
 
 interface ToastCtx {
   toast: (message: string, kind?: ToastKind) => void;
+}
+
+function dismissLabel(): string {
+  return document.documentElement.lang.toLowerCase().startsWith("zh-tw")
+    ? "關閉通知"
+    : "关闭通知";
 }
 
 const Ctx = React.createContext<ToastCtx>({ toast: () => {} });
@@ -53,16 +59,24 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           return (
             <div
               key={t.id}
-              role="status"
-              onClick={() => setItems((prev) => prev.filter((x) => x.id !== t.id))}
+              role={t.kind === "error" ? "alert" : "status"}
+              aria-live={t.kind === "error" ? "assertive" : "polite"}
               className={cn(
-                "pointer-events-auto relative flex animate-slide-in-right cursor-pointer items-start gap-3 overflow-hidden rounded-md border bg-popover py-3 pl-5 pr-4 text-sm shadow-xl shadow-black/10",
+                "pointer-events-auto relative flex animate-slide-in-right items-start gap-3 overflow-hidden rounded-md border bg-popover py-3 pl-5 pr-2 text-sm shadow-xl shadow-black/10",
                 "before:absolute before:inset-y-0 before:left-0 before:w-1",
                 accents[t.kind]
               )}
             >
-              <Icon className="mt-0.5 h-4 w-4 shrink-0" />
-              <span className="leading-relaxed">{t.message}</span>
+              <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span className="min-w-0 flex-1 leading-relaxed">{t.message}</span>
+              <button
+                type="button"
+                className="rounded-sm p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label={dismissLabel()}
+                onClick={() => setItems((prev) => prev.filter((x) => x.id !== t.id))}
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
             </div>
           );
         })}

@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, onAuthExpired } from "@/lib/api";
 import type { Me } from "@/lib/types";
 
 interface AuthState {
@@ -35,6 +35,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     retry: false,
     refetchOnWindowFocus: false,
   });
+
+  React.useEffect(
+    () =>
+      onAuthExpired(() => {
+        void qc.cancelQueries({ queryKey: ["me"] });
+        qc.removeQueries({ queryKey: ["me"] });
+        window.location.assign("/login?reason=session_expired");
+      }),
+    [qc],
+  );
 
   const value: AuthState = {
     me: data ?? null,

@@ -5,8 +5,8 @@
 # ---- stage 1: build the SPA ----
 FROM node:22-alpine AS web
 WORKDIR /web
-COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci || npm install
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
 COPY frontend/ ./
 RUN npm run build   # -> /web/dist
 

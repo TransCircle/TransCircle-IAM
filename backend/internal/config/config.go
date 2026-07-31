@@ -6,6 +6,7 @@ package config
 import (
 	"fmt"
 	"net/netip"
+	"net/url"
 	"strings"
 	"time"
 
@@ -135,6 +136,28 @@ func Load() (*Config, error) {
 }
 
 func (c *Config) validate() error {
+	if c.Env != "dev" && c.Env != "prod" {
+		return fmt.Errorf("IAM_ENV must be dev or prod, got %q", c.Env)
+	}
+	issuer, err := url.Parse(c.Issuer)
+	if err != nil || issuer.Scheme == "" || issuer.Host == "" {
+		return fmt.Errorf("invalid issuer %q", c.Issuer)
+	}
+	if c.IsProd() {
+		if issuer.Scheme != "https" {
+			return fmt.Errorf("production issuer must use https")
+		}
+		if c.TrustAllProxies {
+			return fmt.Errorf("IAM_TRUST_ALL_PROXIES is forbidden in production; configure IAM_TRUSTED_PROXIES")
+		}
+		lowerDB := strings.ToLower(c.DatabaseURL)
+		if strings.Contains(lowerDB, "postgres://iam:iam@") || strings.Contains(lowerDB, "postgresql://iam:iam@") {
+			return fmt.Errorf("production database URL uses the default iam password")
+		}
+		if strings.Contains(strings.ToLower(c.RedisURL), ":iamredis@") {
+			return fmt.Errorf("production redis URL uses the default password")
+		}
+	}
 	if c.SessionAbsoluteTTL < c.SessionIdleTTL {
 		return fmt.Errorf("session absolute TTL (%s) must be >= idle TTL (%s)", c.SessionAbsoluteTTL, c.SessionIdleTTL)
 	}

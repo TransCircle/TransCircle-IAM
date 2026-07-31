@@ -4,6 +4,25 @@ import { requestStepUp, StepUpCancelledError } from "./stepup";
 
 export const api = axios.create({ baseURL: "/", withCredentials: true });
 
+type AuthExpiredListener = () => void;
+const authExpiredListeners = new Set<AuthExpiredListener>();
+
+export function onAuthExpired(listener: AuthExpiredListener): () => void {
+  authExpiredListeners.add(listener);
+  return () => authExpiredListeners.delete(listener);
+}
+
+function emitAuthExpired(): void {
+  for (const listener of authExpiredListeners) listener();
+}
+
+function isExpectedAnonymousEndpoint(url: string | undefined): boolean {
+  if (!url) return false;
+  return ["/api/v1/login", "/api/v1/me", "/api/v1/auth/", "/api/v1/mfa/"].some((prefix) =>
+    url.includes(prefix),
+  );
+}
+
 // Attach the CSRF token (double-submit) on unsafe requests.
 api.interceptors.request.use((config) => {
   const method = (config.method || "get").toLowerCase();
@@ -26,6 +45,9 @@ api.interceptors.response.use(
       cfg._stepUpRetried = true;
       await requestStepUp(); // resolves once the user re-verifies MFA
       return api(cfg); // retry
+    }
+    if (error.response?.status === 401 && !isExpectedAnonymousEndpoint(cfg?.url)) {
+      emitAuthExpired();
     }
     return Promise.reject(error);
   }
